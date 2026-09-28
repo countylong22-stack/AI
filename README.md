@@ -1,37 +1,45 @@
-# Rooster Autonomous Engineer v1
+# Rooster Autonomous Engineer v1.2
 
-A Windows-friendly desktop foundation for an autonomous engineering assistant.
+## Downloadable Windows app
 
-## Current capabilities
+The repository now includes a Windows build script that packages Rooster as a standalone `.exe` using PyInstaller.
 
-- Desktop GUI built with Tkinter
-- Persistent task memory in the user's home directory
-- Engineering objective planning/execution loop
-- Project workspace selection
-- Live activity log
-- Git status integration
-- Workspace inspection
-- Project-type detection
-- Exportable activity log
-- Safe-by-default execution model
+### Build the EXE
 
-## Run on Windows
+Open PowerShell in the repository folder and run:
 
 ```powershell
-python app.py
+.\build_windows.ps1
 ```
 
-No third-party Python packages are required for v1.
+The finished application will be created at:
 
-## Roadmap
+```text
+dist\Rooster Autonomous Engineer.exe
+```
 
-1. Repository-aware file inspection
-2. Structured plan objects
-3. Tool registry
-4. Test/build verification
-5. Git branch and commit workflow
+### Current features
+
+- Desktop GUI
+- Persistent task memory
+- Autonomous engineering core
+- Tool registry
+- Workspace inspection
+- Safe file reading
+- Git status
+- Task planning
+- Background task execution
+- Activity log
+- Windows executable build
+
+### Roadmap
+
+1. Repository-aware code analysis
+2. Structured edit plans
+3. Test and build verification
+4. Approval-gated file modifications
+5. Git branch/commit workflow
 6. LLM provider integration
-7. Approval gates for consequential actions
-8. Packaged Windows executable
-9. Autonomous engineering task queue
-10. Public web control plane
+7. One-click Windows release packaging
+8. Installer and versioned releases
+9. Optional web control plane
