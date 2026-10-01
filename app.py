@@ -8,6 +8,8 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 from datetime import datetime
 
 from rooster_engine import AutonomousEngineer
+from rooster_engine.interaction import parse_chat_action
+from uuid import uuid4
 
 APP_NAME = "Rooster Autonomous Engineer"
 DATA_FILE = Path.home() / ".rooster_autonomous_engineer.json"
@@ -104,7 +106,36 @@ class RoosterEngineerApp:
             return
         self.chat_entry.delete("1.0", tk.END)
         self.chat_log("YOU", message)
-        self.chat_log("ROOSTER", "I’ll inspect the workspace and produce a guarded engineering report. The current analysis path does not modify project files.")
+
+        action = parse_chat_action(message)
+        if action is not None:
+            task_id = f"chat-{uuid4().hex[:12]}"
+
+            def execute_approved_action():
+                result = self.engine.tools.run(
+                    action.tool,
+                    reason=action.reason,
+                    action=action.action,
+                    evidence=action.evidence,
+                    risk=action.risk,
+                    target=action.target,
+                    actor="human",
+                    task_id=task_id,
+                )
+                evidence = getattr(result, "evidence", None)
+                if evidence:
+                    self.chat_log("ROOSTER", json.dumps(evidence, indent=2, default=str))
+                else:
+                    self.chat_log("ROOSTER", str(result))
+
+            self.propose_action(action, execute_approved_action, task_id)
+            return
+
+        self.chat_log(
+            "ROOSTER",
+            "I’ll inspect the workspace and produce a guarded engineering report. "
+            "The current analysis path does not modify project files.",
+        )
         self.task_entry.delete("1.0", tk.END)
         self.task_entry.insert("1.0", message)
         self.start_task()
