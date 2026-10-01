@@ -46,6 +46,9 @@ class Action:
 class Approval:
     action_id: str
     expires_at: datetime
+    actor: str = "human"
+    task_id: str = ""
+    granted_at: datetime = datetime.min.replace(tzinfo=timezone.utc)
 
 
 class EmergencyStop:
@@ -128,15 +131,32 @@ class RoosterGuard:
         self._approvals: dict[str, Approval] = {}
         self._lock = threading.Lock()
 
-    def approve(self, action_id: str, ttl: timedelta | None = None) -> None:
+    def approve(
+        self,
+        action_id: str,
+        ttl: timedelta | None = None,
+        *,
+        actor: str = "human",
+        task_id: str = "",
+    ) -> None:
         if not action_id:
             raise ValueError("Approval requires a non-empty action ID.")
-        expires_at = datetime.now(timezone.utc) + (ttl or self.DEFAULT_APPROVAL_TTL)
+        if not actor:
+            raise ValueError("Approval actor must be non-empty.")
+        if not isinstance(task_id, str):
+            raise ValueError("Approval task ID must be a string.")
+        granted_at = datetime.now(timezone.utc)
+        expires_at = granted_at + (ttl or self.DEFAULT_APPROVAL_TTL)
         with self._lock:
-            self._approvals[action_id] = Approval(action_id, expires_at)
+            self._approvals[action_id] = Approval(
+                action_id, expires_at, actor, task_id, granted_at
+            )
         self.audit.write(
             "approval_granted",
             action_id=action_id,
+            actor=actor,
+            task_id=task_id,
+            granted_at=granted_at.isoformat(),
             expires_at=expires_at.isoformat(),
         )
 
@@ -149,8 +169,18 @@ class RoosterGuard:
         raw = json.dumps(action.__dict__, sort_keys=True, default=str).encode()
         return hashlib.sha256(raw).hexdigest()[:16]
 
-    def authorize(self, action: Action) -> str:
+    def authorize(
+        self,
+        action: Action,
+        *,
+        actor: str = "human",
+        task_id: str = "",
+    ) -> str:
         self.emergency_stop.check()
+        if not actor:
+            raise ValueError("Authorization actor must be non-empty.")
+        if not isinstance(task_id, str):
+            raise ValueError("Authorization task ID must be a string.")
         policy = self.policies.get(action.tool)
         if policy is None:
             self.audit.write(
@@ -180,6 +210,18 @@ class RoosterGuard:
                     approval = None
                 if approval is None:
                     approved = False
+                elif approval.actor != actor or approval.task_id != task_id:
+                    self.audit.write(
+                        "approval_denied",
+                        action_id=action_id,
+                        tool=action.tool,
+                        reason="approval_context_mismatch",
+                        approval_actor=approval.actor,
+                        requested_actor=actor,
+                        approval_task_id=approval.task_id,
+                        requested_task_id=task_id,
+                    )
+                    approved = False
                 else:
                     self._approvals.pop(action_id, None)
                     approved = True
@@ -191,12 +233,18 @@ class RoosterGuard:
                     tool=action.tool,
                     risk=action.risk.value,
                     reason=action.reason,
+                    actor=actor,
+                    task_id=task_id,
                 )
                 raise PermissionError(
                     f"Human approval required for action {action_id}."
                 )
             self.audit.write(
-                "approval_consumed", action_id=action_id, tool=action.tool
+                "approval_consumed",
+                action_id=action_id,
+                tool=action.tool,
+                actor=actor,
+                task_id=task_id
             )
 
         self.audit.write(
