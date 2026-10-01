@@ -12,6 +12,7 @@ from datetime import datetime
 from .guard import Action, Risk, RoosterGuard
 from .runtime import RuntimeBudget, RuntimeLimits
 from .verification import VerificationEngine
+from .analysis import CodebaseAnalyzer, prioritize_findings
 
 
 @dataclass
@@ -262,6 +263,8 @@ class AutonomousEngineer:
                 risk=Risk.LOW,
             )
             budget.begin_step()
+            analysis = CodebaseAnalyzer(self.workspace.root).analyze(workspace_items)
+            analysis["findings"] = prioritize_findings(analysis["findings"])
             status = self.tools.run(
                 "git_status",
                 reason=rationale["reason"],
@@ -279,6 +282,7 @@ class AutonomousEngineer:
                 {
                     "plan": self.plan(objective),
                     "workspace_items": workspace_items,
+                    "analysis": analysis,
                     "git_status": status,
                     "checkpoint": str(checkpoint),
                     "tools": self.tools.names(),
@@ -295,8 +299,9 @@ class AutonomousEngineer:
             )
             task.status = "completed"
             task.evidence = (
-                "Workspace inspected, git status captured, and checkpoint created. "
-                "No project files modified."
+                f"Workspace inspected; {analysis['file_count']} source files read; "
+                f"{len(analysis['findings'])} evidence-backed findings produced; "
+                "git status captured; checkpoint created. No project files modified."
             )
             self.guard.audit.write(
                 "task_completed", objective=objective, evidence=task.evidence
