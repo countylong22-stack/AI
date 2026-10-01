@@ -18,7 +18,19 @@ class CodebaseAnalyzerTests(unittest.TestCase):
             self.assertEqual(result["file_count"], 1)
             self.assertTrue(result["read_only"])
             self.assertEqual(result["files_read"], ["rooster_engine/guard.py"])
-            self.assertTrue(result["findings"])
+        self.assertTrue(result["findings"])
+            self.assertTrue(all("file" in finding for finding in result["findings"]))
+
+    def test_findings_identify_source_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "rooster_engine").mkdir()
+            (root / "rooster_engine" / "command.py").write_text(
+                'DEFAULT_ALLOWED = frozenset({"python"})\n', encoding="utf-8"
+            )
+            result = CodebaseAnalyzer(root).analyze([])
+            finding = next(item for item in result["findings"] if item["area"] == "command execution")
+            self.assertEqual(finding["file"], "rooster_engine/command.py")
 
     def test_findings_are_prioritized(self):
         findings = [
