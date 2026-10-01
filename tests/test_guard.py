@@ -82,6 +82,36 @@ class GuardTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 guard.approve("abc", actor="")
 
+
+    def test_protected_system_files_are_denied_and_audited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            audit = root / "audit.jsonl"
+            guard = RoosterGuard(root, audit)
+            protected = [
+                "rooster_engine/guard.py",
+                "rooster_engine/core.py",
+                "rooster_engine/command.py",
+                "rooster_engine/runtime.py",
+                "rooster_engine/verification.py",
+                "rooster_engine/analysis.py",
+                "app.py",
+                ".github/workflows/ci.yml",
+                "SECURITY.md",
+            ]
+            for path in protected:
+                with self.assertRaises(PermissionError):
+                    guard.enforce_write_target(path)
+            audit_text = audit.read_text(encoding="utf-8")
+            self.assertEqual(audit_text.count("protected_write_denied"), len(protected))
+
+    def test_protected_path_matching_is_case_insensitive_and_blocks_nested_workflows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
+            self.assertEqual(guard.protected_path("RoOsTeR_EnGiNe/GuArD.PY"), "rooster_engine/guard.py")
+            self.assertEqual(guard.protected_path(".github/workflows/release/build.yml"), ".github/workflows/*")
+            self.assertIsNone(guard.protected_path("src/example.py"))
+
     def test_sandbox_rejects_escape(self):
         with tempfile.TemporaryDirectory() as tmp:
             guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
