@@ -276,7 +276,9 @@ class RoosterGuard:
         candidate = Path(relative_path.replace("\\\\", "/"))
         if candidate.is_absolute() or not relative_path:
             return None
-        normalized = candidate.as_posix().lstrip("./")
+        normalized = candidate.as_posix()
+        if normalized.startswith("./"):
+            normalized = normalized[2:]
         for rule in self.PROTECTED_PATHS:
             if rule.endswith("/*"):
                 prefix = rule[:-2].rstrip("/") + "/"
