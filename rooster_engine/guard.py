@@ -259,6 +259,47 @@ class RoosterGuard:
         )
         return action_id
 
+    PROTECTED_PATHS = (
+        "rooster_engine/guard.py",
+        "rooster_engine/core.py",
+        "rooster_engine/command.py",
+        "rooster_engine/runtime.py",
+        "rooster_engine/verification.py",
+        "rooster_engine/analysis.py",
+        "app.py",
+        ".github/workflows/*",
+        "SECURITY.md",
+    )
+
+    def protected_path(self, relative_path: str) -> str | None:
+        """Return the protected rule matching a workspace-relative path, if any."""
+        candidate = Path(relative_path.replace("\\\\", "/"))
+        if candidate.is_absolute() or not relative_path:
+            return None
+        normalized = candidate.as_posix().lstrip("./")
+        for rule in self.PROTECTED_PATHS:
+            if rule.endswith("/*"):
+                prefix = rule[:-2].rstrip("/") + "/"
+                if normalized.lower().startswith(prefix.lower()):
+                    return rule
+            elif normalized.lower() == rule.lower():
+                return rule
+        return None
+
+    def enforce_write_target(self, relative_path: str) -> None:
+        """Block autonomous writes to security-critical workspace paths."""
+        rule = self.protected_path(relative_path)
+        if rule is not None:
+            self.audit.write(
+                "protected_write_denied",
+                target=relative_path,
+                rule=rule,
+                reason="protected_system_file",
+            )
+            raise PermissionError(
+                f"Write target is protected by RoosterGuard: {relative_path}"
+            )
+
     def sandbox_path(self, relative_path: str) -> Path:
         sandbox = (self.workspace / ".rooster" / "sandbox").resolve()
         candidate = sandbox / relative_path
