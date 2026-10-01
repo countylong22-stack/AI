@@ -96,7 +96,7 @@ class Workspace:
         target = self.checkpoints / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{safe}"
         if target.exists():
             target = target.with_name(target.name + "_1")
-        shutil.copytree(self.root, target, ignore=shutil.ignore_patterns(".git", ".rooster/checkpoints", "__pycache__", "*.pyc"))
+        shutil.copytree(self.root, target, ignore=shutil.ignore_patterns(".git", ".rooster", "__pycache__", "*.pyc"))
         return target
 
 
@@ -158,8 +158,7 @@ class AutonomousEngineer:
         self.guard.audit.write("emergency_stop_reset", source="operator")
 
     def create_checkpoint(self, label: str = "pre_change") -> Path:
-        self.guard.emergency_stop.check()
-        path = self.workspace.checkpoint(label)
+        path = self.tools.run("checkpoint", label, reason="Protect the current workspace before further work", action="Create recovery checkpoint", evidence="Checkpoint directory exists", risk=Risk.LOW, target=label)
         self.guard.audit.write("checkpoint_created", path=str(path), label=label)
         return path
 
