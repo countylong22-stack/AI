@@ -15,14 +15,14 @@ DATA_FILE = Path.home() / ".rooster_autonomous_engineer.json"
 class RoosterEngineerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title(APP_NAME + " v2.0")
+        self.root.title(APP_NAME + " v2.1")
         self.root.geometry("1180x780")
         self.root.minsize(900, 600)
         self.workspace = Path.cwd()
         self.engine = AutonomousEngineer(self.workspace, DATA_FILE)
         self.build_ui()
         self.refresh_tasks()
-        self.log("Rooster Autonomous Engineer v2.0 online.")
+        self.log("Rooster Autonomous Engineer v2.1 online.")
         self.log("RoosterGuard: permissions + sandbox + checkpoints + audit + emergency stop")
         self.log(f"Workspace: {self.workspace}")
         self.log(f"Tools: {', '.join(self.engine.tools.names())}")
@@ -34,7 +34,7 @@ class RoosterEngineerApp:
     def build_ui(self):
         top = ttk.Frame(self.root, padding=10)
         top.pack(fill="x")
-        ttk.Label(top, text=APP_NAME + " v2.0", font=("Segoe UI", 18, "bold")).pack(side="left")
+        ttk.Label(top, text=APP_NAME + " v2.1", font=("Segoe UI", 18, "bold")).pack(side="left")
         ttk.Button(top, text="EMERGENCY STOP", command=self.emergency_stop).pack(side="right", padx=(6, 0))
         ttk.Button(top, text="Reset Stop", command=self.reset_stop).pack(side="right", padx=6)
         ttk.Button(top, text="Choose Workspace", command=self.choose_workspace).pack(side="right")
