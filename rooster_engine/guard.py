@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
+import hashlib
 import json
 import threading
 from datetime import datetime, timezone
@@ -67,11 +68,7 @@ class AuditLog:
         self._lock = threading.Lock()
 
     def write(self, event: str, **data: Any) -> None:
-        record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "event": event,
-            **data,
-        }
+        record = {"timestamp": datetime.now(timezone.utc).isoformat(), "event": event, **data}
         with self._lock:
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record, sort_keys=True) + "\n")
@@ -107,7 +104,6 @@ class RoosterGuard:
             self._approvals.discard(action_id)
 
     def action_id(self, action: Action) -> str:
-        import hashlib
         raw = json.dumps(action.__dict__, sort_keys=True).encode()
         return hashlib.sha256(raw).hexdigest()[:16]
 
@@ -117,7 +113,7 @@ class RoosterGuard:
         if policy is None:
             self.audit.write("action_denied", tool=action.tool, reason="unknown_tool")
             raise PermissionError(f"Tool is not registered with RoosterGuard: {action.tool}")
-        if action.risk.value != policy.risk.value:
+        if action.risk != policy.risk:
             raise PermissionError(f"Risk mismatch for {action.tool}: policy={policy.risk.value}")
         action_id = self.action_id(action)
         if policy.approval_required and action_id not in self._approvals:
@@ -127,9 +123,9 @@ class RoosterGuard:
         return action_id
 
     def sandbox_path(self, relative_path: str) -> Path:
-        candidate = (self.workspace / relative_path).resolve()
         sandbox = (self.workspace / ".rooster" / "sandbox").resolve()
-        candidate.parent.mkdir(parents=True, exist_ok=True)
+        candidate = (sandbox / relative_path).resolve()
         if sandbox not in candidate.parents and candidate != sandbox:
             raise PermissionError("Writes are restricted to the Rooster sandbox.")
+        candidate.parent.mkdir(parents=True, exist_ok=True)
         return candidate
