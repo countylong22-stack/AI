@@ -71,6 +71,11 @@ class RoosterEngineerApp:
         chat_buttons.pack(fill="x", pady=(0, 6))
         ttk.Button(chat_buttons, text="Send to Rooster", command=self.send_chat).pack(side="left")
         ttk.Button(chat_buttons, text="Use as Objective", command=self.use_chat_as_objective).pack(side="left", padx=6)
+        self.approve_button = ttk.Button(chat_buttons, text="APPROVE ACTION", command=self.approve_pending_action, state="disabled")
+        self.approve_button.pack(side="left", padx=6)
+        self.reject_button = ttk.Button(chat_buttons, text="REJECT", command=self.reject_pending_action, state="disabled")
+        self.reject_button.pack(side="left")
+        self.pending_action = None
         self.chat_entry.bind("<Control-Return>", lambda _event: self.send_chat())
 
         ttk.Label(right, text="Live Activity / Audit View").pack(anchor="w")
@@ -116,20 +121,51 @@ class RoosterEngineerApp:
     def show_chat_response(self, message):
         self.chat_log("ROOSTER", message)
 
-    def propose_action(self, action):
-        """Display a deterministic approval request without executing it."""
+    def propose_action(self, action, executor, task_id=""):
+        """Queue one exact guarded action for explicit human approval."""
         action_id = self.engine.guard.action_id(action)
+        self.pending_action = (action, action_id, executor, task_id)
+        self.approve_button.configure(state="normal")
+        self.reject_button.configure(state="normal")
         self.chat_log(
             "ROOSTER",
-            f"PROPOSED ACTION\n"
-            f"Tool: {action.tool}\n"
-            f"Risk: {action.risk.value.upper()}\n"
-            f"Target: {action.target or '(workspace)'}\n"
-            f"Reason: {action.reason}\n"
-            f"Action ID: {action_id}\n"
-            "No action has been executed. Human approval is required."
+            f"PROPOSED ACTION\\n"
+            f"Tool: {action.tool}\\n"
+            f"Risk: {action.risk.value.upper()}\\n"
+            f"Target: {action.target or '(workspace)'}\\n"
+            f"Reason: {action.reason}\\n"
+            f"Action ID: {action_id}\\n"
+            "No action has been executed. Choose APPROVE ACTION or REJECT."
         )
         return action_id
+
+    def approve_pending_action(self):
+        if not self.pending_action:
+            self.chat_log("ROOSTER", "There is no pending action to approve.")
+            return
+        action, action_id, executor, task_id = self.pending_action
+        self.pending_action = None
+        self.approve_button.configure(state="disabled")
+        self.reject_button.configure(state="disabled")
+        try:
+            self.engine.guard.approve(action_id, actor="human", task_id=task_id)
+            self.chat_log("YOU", f"APPROVED action {action_id}")
+            self.chat_log("ROOSTER", "Approval recorded. Executing the exact approved action once.")
+            executor()
+            self.chat_log("ROOSTER", "Action completed successfully.")
+        except Exception as exc:
+            self.chat_log("ROOSTER", f"Action failed or was denied: {exc}")
+
+    def reject_pending_action(self):
+        if not self.pending_action:
+            return
+        _action, action_id, _executor, _task_id = self.pending_action
+        self.pending_action = None
+        self.approve_button.configure(state="disabled")
+        self.reject_button.configure(state="disabled")
+        self.engine.guard.revoke_approval(action_id)
+        self.chat_log("YOU", f"REJECTED action {action_id}")
+        self.chat_log("ROOSTER", "Rejected. Nothing was executed.")
 
     def choose_workspace(self):
         folder = filedialog.askdirectory(initialdir=str(self.workspace))
