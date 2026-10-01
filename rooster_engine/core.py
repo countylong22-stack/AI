@@ -202,8 +202,13 @@ class AutonomousEngineer:
         self.tools.register("inspect_workspace", self.workspace.inspect)
         self.tools.register("git_status", self.workspace.git_status)
         self.tools.register("read_file", self.workspace.read_text)
-        self.tools.register("write_file", self.workspace.write_sandbox)
+        self.tools.register("write_file", self.write_file)
         self.tools.register("checkpoint", self.workspace.checkpoint)
+
+    def write_file(self, relative_path: str, content: str) -> str:
+        """Write only to the guarded sandbox and enforce protected-path policy."""
+        self.guard.enforce_write_target(relative_path)
+        return self.workspace.write_sandbox(relative_path, content)
 
     def plan(self, objective: str) -> list[str]:
         return [
