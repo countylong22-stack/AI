@@ -18,27 +18,36 @@ DATA_FILE = Path.home() / ".rooster_autonomous_engineer.json"
 class RoosterEngineerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title(APP_NAME + " v2.1")
-        self.root.geometry("1180x780")
-        self.root.minsize(900, 600)
+        self.root.title(APP_NAME + " v2.2")
+        self.root.geometry("1180x800")
+        self.root.minsize(900, 620)
         self.workspace = Path.cwd()
         self.engine = AutonomousEngineer(self.workspace, DATA_FILE)
+        self.pending_action = None
+        self.action_running = False
         self.build_ui()
         self.log("Interactive chat: type a request and click Send to Rooster.")
         self.refresh_tasks()
-        self.log("Rooster Autonomous Engineer v2.1 online.")
+        self.log("Rooster Autonomous Engineer v2.2 online.")
         self.log("RoosterGuard: permissions + sandbox + checkpoints + audit + emergency stop")
         self.log(f"Workspace: {self.workspace}")
         self.log(f"Tools: {', '.join(self.engine.tools.names())}")
+        self.set_action_status("IDLE", "No pending action")
 
     def log(self, message):
         stamp = datetime.now().strftime("%H:%M:%S")
-        self.root.after(0, lambda: (self.activity.insert(tk.END, f"[{stamp}] {message}\n"), self.activity.see(tk.END)))
+        self.root.after(
+            0,
+            lambda: (
+                self.activity.insert(tk.END, f"[{stamp}] {message}\n"),
+                self.activity.see(tk.END),
+            ),
+        )
 
     def build_ui(self):
         top = ttk.Frame(self.root, padding=10)
         top.pack(fill="x")
-        ttk.Label(top, text=APP_NAME + " v2.1", font=("Segoe UI", 18, "bold")).pack(side="left")
+        ttk.Label(top, text=APP_NAME + " v2.2", font=("Segoe UI", 18, "bold")).pack(side="left")
         ttk.Button(top, text="EMERGENCY STOP", command=self.emergency_stop).pack(side="right", padx=(6, 0))
         ttk.Button(top, text="Reset Stop", command=self.reset_stop).pack(side="right", padx=6)
         ttk.Button(top, text="Choose Workspace", command=self.choose_workspace).pack(side="right")
@@ -71,14 +80,22 @@ class RoosterEngineerApp:
         self.chat_entry.pack(fill="x", pady=(0, 6))
         chat_buttons = ttk.Frame(right)
         chat_buttons.pack(fill="x", pady=(0, 6))
-        ttk.Button(chat_buttons, text="Send to Rooster", command=self.send_chat).pack(side="left")
+        self.send_button = ttk.Button(chat_buttons, text="Send to Rooster", command=self.send_chat)
+        self.send_button.pack(side="left")
         ttk.Button(chat_buttons, text="Use as Objective", command=self.use_chat_as_objective).pack(side="left", padx=6)
         self.approve_button = ttk.Button(chat_buttons, text="APPROVE ACTION", command=self.approve_pending_action, state="disabled")
         self.approve_button.pack(side="left", padx=6)
         self.reject_button = ttk.Button(chat_buttons, text="REJECT", command=self.reject_pending_action, state="disabled")
         self.reject_button.pack(side="left")
-        self.pending_action = None
         self.chat_entry.bind("<Control-Return>", lambda _event: self.send_chat())
+
+        status_frame = ttk.Frame(right)
+        status_frame.pack(fill="x", pady=(0, 6))
+        ttk.Label(status_frame, text="Action Status:").pack(side="left")
+        self.action_status_var = tk.StringVar(value="IDLE")
+        ttk.Label(status_frame, textvariable=self.action_status_var, font=("Segoe UI", 10, "bold")).pack(side="left", padx=6)
+        self.action_detail_var = tk.StringVar(value="No pending action")
+        ttk.Label(status_frame, textvariable=self.action_detail_var).pack(side="left", padx=6)
 
         ttk.Label(right, text="Live Activity / Audit View").pack(anchor="w")
         self.activity = scrolledtext.ScrolledText(right, wrap="word")
@@ -92,15 +109,29 @@ class RoosterEngineerApp:
         ttk.Button(bottom, text="Checkpoint", command=self.create_checkpoint).pack(side="left", padx=6)
         ttk.Button(bottom, text="Save Task Log", command=self.save_log).pack(side="left")
 
-
     def chat_log(self, speaker, message):
         stamp = datetime.now().strftime("%H:%M:%S")
-        self.chat.configure(state="normal")
-        self.chat.insert(tk.END, f"[{stamp}] {speaker}: {message}\n\n")
-        self.chat.see(tk.END)
-        self.chat.configure(state="disabled")
+
+        def append():
+            self.chat.configure(state="normal")
+            self.chat.insert(tk.END, f"[{stamp}] {speaker}: {message}\n\n")
+            self.chat.see(tk.END)
+            self.chat.configure(state="disabled")
+
+        self.root.after(0, append)
+
+    def set_action_status(self, status, detail):
+        def update():
+            self.action_status_var.set(status)
+            self.action_detail_var.set(detail)
+
+        self.root.after(0, update)
 
     def send_chat(self):
+        if self.action_running:
+            self.chat_log("ROOSTER", "An approved action is still executing. Please wait for it to finish.")
+            return
+
         message = self.chat_entry.get("1.0", tk.END).strip()
         if not message:
             return
@@ -123,10 +154,7 @@ class RoosterEngineerApp:
                     task_id=task_id,
                 )
                 evidence = getattr(result, "evidence", None)
-                if evidence:
-                    self.chat_log("ROOSTER", json.dumps(evidence, indent=2, default=str))
-                else:
-                    self.chat_log("ROOSTER", str(result))
+                return evidence if evidence else str(result)
 
             self.propose_action(action, execute_approved_action, task_id)
             return
@@ -148,7 +176,6 @@ class RoosterEngineerApp:
         self.task_entry.insert("1.0", message)
         self.chat_log("SYSTEM", "Request copied to Engineering Objective. Review it, then click Plan & Run.")
 
-
     def show_chat_response(self, message):
         self.chat_log("ROOSTER", message)
 
@@ -158,15 +185,16 @@ class RoosterEngineerApp:
         self.pending_action = (action, action_id, executor, task_id)
         self.approve_button.configure(state="normal")
         self.reject_button.configure(state="normal")
+        self.set_action_status("PENDING APPROVAL", f"{action.tool} · {action_id}")
         self.chat_log(
             "ROOSTER",
-            f"PROPOSED ACTION\\n"
-            f"Tool: {action.tool}\\n"
-            f"Risk: {action.risk.value.upper()}\\n"
-            f"Target: {action.target or '(workspace)'}\\n"
-            f"Reason: {action.reason}\\n"
-            f"Action ID: {action_id}\\n"
-            "No action has been executed. Choose APPROVE ACTION or REJECT."
+            f"PROPOSED ACTION\n"
+            f"Tool: {action.tool}\n"
+            f"Risk: {action.risk.value.upper()}\n"
+            f"Target: {action.target or '(workspace)'}\n"
+            f"Reason: {action.reason}\n"
+            f"Action ID: {action_id}\n"
+            "No action has been executed. Choose APPROVE ACTION or REJECT.",
         )
         return action_id
 
@@ -174,27 +202,61 @@ class RoosterEngineerApp:
         if not self.pending_action:
             self.chat_log("ROOSTER", "There is no pending action to approve.")
             return
+
         action, action_id, executor, task_id = self.pending_action
         self.pending_action = None
         self.approve_button.configure(state="disabled")
         self.reject_button.configure(state="disabled")
+        self.send_button.configure(state="disabled")
+        self.action_running = True
+
         try:
             self.engine.guard.approve(action_id, actor="human", task_id=task_id)
             self.chat_log("YOU", f"APPROVED action {action_id}")
             self.chat_log("ROOSTER", "Approval recorded. Executing the exact approved action once.")
-            executor()
-            self.chat_log("ROOSTER", "Action completed successfully.")
+            self.set_action_status("EXECUTING", f"{action.tool} · {action_id}")
         except Exception as exc:
-            self.chat_log("ROOSTER", f"Action failed or was denied: {exc}")
+            self.action_running = False
+            self.send_button.configure(state="normal")
+            self.set_action_status("FAILED", str(exc))
+            self.chat_log("ROOSTER", f"Action approval failed or was denied: {exc}")
+            return
+
+        threading.Thread(
+            target=self._execute_approved_action,
+            args=(executor, action.tool, action_id),
+            daemon=True,
+        ).start()
+
+    def _execute_approved_action(self, executor, tool_name, action_id):
+        try:
+            evidence = executor()
+            if evidence:
+                self.chat_log("ROOSTER", json.dumps(evidence, indent=2, default=str) if not isinstance(evidence, str) else evidence)
+            self.root.after(0, self._finish_approved_action, True, tool_name, action_id, "")
+        except Exception as exc:
+            self.root.after(0, self._finish_approved_action, False, tool_name, action_id, str(exc))
+
+    def _finish_approved_action(self, success, tool_name, action_id, error):
+        self.action_running = False
+        self.send_button.configure(state="normal")
+        if success:
+            self.set_action_status("COMPLETED", f"{tool_name} · {action_id}")
+            self.chat_log("ROOSTER", "Action completed successfully.")
+        else:
+            self.set_action_status("FAILED", f"{tool_name} · {action_id}")
+            self.chat_log("ROOSTER", f"Action failed or was denied: {error}")
 
     def reject_pending_action(self):
         if not self.pending_action:
+            self.chat_log("ROOSTER", "There is no pending action to reject.")
             return
         _action, action_id, _executor, _task_id = self.pending_action
         self.pending_action = None
         self.approve_button.configure(state="disabled")
         self.reject_button.configure(state="disabled")
         self.engine.guard.revoke_approval(action_id)
+        self.set_action_status("REJECTED", action_id)
         self.chat_log("YOU", f"REJECTED action {action_id}")
         self.chat_log("ROOSTER", "Rejected. Nothing was executed.")
 
@@ -205,6 +267,7 @@ class RoosterEngineerApp:
             self.engine = AutonomousEngineer(self.workspace, DATA_FILE)
             self.log(f"Workspace changed to: {self.workspace}")
             self.log(f"Tools: {', '.join(self.engine.tools.names())}")
+            self.set_action_status("IDLE", "Workspace changed; no pending action")
 
     def open_workspace(self):
         try:
@@ -238,10 +301,15 @@ class RoosterEngineerApp:
     def emergency_stop(self):
         self.engine.emergency_stop()
         self.log("!!! EMERGENCY STOP ACTIVE — all guarded actions blocked !!!")
+        if self.pending_action:
+            self.reject_pending_action()
+        self.set_action_status("STOPPED", "Emergency stop active")
 
     def reset_stop(self):
         self.engine.reset_emergency_stop()
         self.log("Emergency stop reset. Guarded actions may resume.")
+        if not self.action_running and not self.pending_action:
+            self.set_action_status("IDLE", "No pending action")
 
     def start_task(self):
         objective = self.task_entry.get("1.0", tk.END).strip()
