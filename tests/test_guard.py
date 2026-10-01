@@ -47,6 +47,41 @@ class GuardTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 guard.authorize(action)
 
+    def test_approval_context_must_match_and_is_audited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
+            action = Action(
+                "git_push",
+                "publish approved changes",
+                "push",
+                "remote accepts commit",
+                Risk.CRITICAL,
+            )
+            action_id = guard.action_id(action)
+            guard.approve(action_id, actor="joe", task_id="task-123")
+
+            with self.assertRaises(PermissionError):
+                guard.authorize(action, actor="joe", task_id="task-999")
+
+            with self.assertRaises(PermissionError):
+                guard.authorize(action, actor="other", task_id="task-123")
+
+            self.assertEqual(
+                guard.authorize(action, actor="joe", task_id="task-123"),
+                action_id,
+            )
+            audit = Path(tmp) / "audit.jsonl"
+            audit_text = audit.read_text(encoding="utf-8")
+            self.assertIn("approval_context_mismatch", audit_text)
+            self.assertIn("task-123", audit_text)
+            self.assertIn("joe", audit_text)
+
+    def test_approval_rejects_empty_actor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
+            with self.assertRaises(ValueError):
+                guard.approve("abc", actor="")
+
     def test_sandbox_rejects_escape(self):
         with tempfile.TemporaryDirectory() as tmp:
             guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
