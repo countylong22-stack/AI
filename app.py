@@ -22,6 +22,7 @@ class RoosterEngineerApp:
         self.workspace = Path.cwd()
         self.engine = AutonomousEngineer(self.workspace, DATA_FILE)
         self.build_ui()
+        self.log("Interactive chat: type a request and click Send to Rooster.")
         self.refresh_tasks()
         self.log("Rooster Autonomous Engineer v2.1 online.")
         self.log("RoosterGuard: permissions + sandbox + checkpoints + audit + emergency stop")
@@ -61,6 +62,17 @@ class RoosterEngineerApp:
         self.task_list = tk.Listbox(left, height=20)
         self.task_list.pack(fill="both", expand=True, pady=4)
 
+        ttk.Label(right, text="Talk to Rooster").pack(anchor="w")
+        self.chat = scrolledtext.ScrolledText(right, height=10, wrap="word", state="disabled")
+        self.chat.pack(fill="x", pady=(4, 6))
+        self.chat_entry = tk.Text(right, height=3, wrap="word")
+        self.chat_entry.pack(fill="x", pady=(0, 6))
+        chat_buttons = ttk.Frame(right)
+        chat_buttons.pack(fill="x", pady=(0, 6))
+        ttk.Button(chat_buttons, text="Send to Rooster", command=self.send_chat).pack(side="left")
+        ttk.Button(chat_buttons, text="Use as Objective", command=self.use_chat_as_objective).pack(side="left", padx=6)
+        self.chat_entry.bind("<Control-Return>", lambda _event: self.send_chat())
+
         ttk.Label(right, text="Live Activity / Audit View").pack(anchor="w")
         self.activity = scrolledtext.ScrolledText(right, wrap="word")
         self.activity.pack(fill="both", expand=True, pady=4)
@@ -72,6 +84,33 @@ class RoosterEngineerApp:
         ttk.Button(bottom, text="Run Git Status", command=self.git_status).pack(side="left")
         ttk.Button(bottom, text="Checkpoint", command=self.create_checkpoint).pack(side="left", padx=6)
         ttk.Button(bottom, text="Save Task Log", command=self.save_log).pack(side="left")
+
+
+    def chat_log(self, speaker, message):
+        stamp = datetime.now().strftime("%H:%M:%S")
+        self.chat.configure(state="normal")
+        self.chat.insert(tk.END, f"[{stamp}] {speaker}: {message}\n\n")
+        self.chat.see(tk.END)
+        self.chat.configure(state="disabled")
+
+    def send_chat(self):
+        message = self.chat_entry.get("1.0", tk.END).strip()
+        if not message:
+            return
+        self.chat_entry.delete("1.0", tk.END)
+        self.chat_log("YOU", message)
+        self.chat_log("ROOSTER", "I’ll inspect the workspace and produce a guarded engineering report. The current analysis path does not modify project files.")
+        self.task_entry.delete("1.0", tk.END)
+        self.task_entry.insert("1.0", message)
+        self.start_task()
+
+    def use_chat_as_objective(self):
+        message = self.chat_entry.get("1.0", tk.END).strip()
+        if not message:
+            return
+        self.task_entry.delete("1.0", tk.END)
+        self.task_entry.insert("1.0", message)
+        self.chat_log("SYSTEM", "Request copied to Engineering Objective. Review it, then click Plan & Run.")
 
     def choose_workspace(self):
         folder = filedialog.askdirectory(initialdir=str(self.workspace))
@@ -171,6 +210,7 @@ class RoosterEngineerApp:
                 self.log("  Workspace files modified: 0 (analysis path is read-only)")
                 self.log(f"  Checkpoint: {checkpoint.get('checkpoint', result.get('checkpoint', 'unknown'))}")
                 self.log(f"  Observation captured: {bool(observation)}")
+                self.chat_log("ROOSTER", "Inspection complete. The engineering report in the audit panel contains the evidence and recommendations.")
                 self.log("Local analysis completed without an AI credit/API call.")
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 self.log(f"Local analysis result could not be displayed: {exc}")
