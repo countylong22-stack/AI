@@ -22,7 +22,7 @@ class CommandExecutorTests(unittest.TestCase):
 
     def test_allowlisted_command_requires_exact_approval(self):
         with tempfile.TemporaryDirectory() as tmp:
-            executor, guard = self._executor(tmp, allowed_commands={"python"})
+            executor, guard = self._executor(tmp, allowed_commands={"python"}, allow_general_python=True)
             command = ["python", "-c", "print('ok')"]
             with self.assertRaises(PermissionError):
                 executor.run(command, reason="test", evidence="stdout")
@@ -38,7 +38,7 @@ class CommandExecutorTests(unittest.TestCase):
 
     def test_shell_is_not_used_and_cwd_is_workspace(self):
         with tempfile.TemporaryDirectory() as tmp:
-            executor, guard = self._executor(tmp, allowed_commands={"python"})
+            executor, guard = self._executor(tmp, allowed_commands={"python"}, allow_general_python=True)
             from rooster_engine.guard import Action, Risk
             action = Action("run_command", "cwd test",
                             "Execute allowlisted command: python -c import os; print(os.getcwd())",
@@ -52,7 +52,7 @@ class CommandExecutorTests(unittest.TestCase):
 
     def test_output_is_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:
-            executor, guard = self._executor(tmp, allowed_commands={"python"}, max_output_chars=20)
+            executor, guard = self._executor(tmp, allowed_commands={"python"}, max_output_chars=20, allow_general_python=True)
             from rooster_engine.guard import Action, Risk
             action = Action("run_command", "output test",
                             "Execute allowlisted command: python -c print('x'*100)",
@@ -66,7 +66,8 @@ class CommandExecutorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             budget = RuntimeBudget(RuntimeLimits(max_steps=2, max_failures=1))
             executor, guard = self._executor(tmp, allowed_commands={"python"},
-                                              budget=budget, timeout_seconds=0.05)
+                                              budget=budget, timeout_seconds=0.05,
+                                              allow_general_python=True)
             from rooster_engine.guard import Action, Risk
             action = Action("run_command", "timeout test",
                             "Execute allowlisted command: python -c import time; time.sleep(1)",
@@ -90,3 +91,17 @@ class CommandExecutorTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 executor.run(["python", "-c", "print('blocked')"],
                              reason="stop test", evidence="blocked")
+
+    def test_python_requires_unittest_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            executor, _ = self._executor(tmp)
+            with self.assertRaises(PermissionError):
+                executor.run(["python", "-c", "print('blocked')"],
+                             reason="policy test", evidence="python args")
+
+    def test_python_network_module_is_denied_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            executor, _ = self._executor(tmp)
+            with self.assertRaises(PermissionError):
+                executor.run(["python", "-m", "http.server"],
+                             reason="network policy test", evidence="network denied")
