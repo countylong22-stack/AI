@@ -60,12 +60,20 @@ class CodebaseAnalyzer:
         )
         findings: list[Finding] = []
 
-        if "write_sandbox" in joined and ".rooster/sandbox" in joined:
+        if (
+            "write_sandbox" in joined
+            and ".rooster/sandbox" in joined
+            and "PROTECTED_PATHS" not in joined
+        ):
             findings.append(Finding(
                 "self-modification",
                 "HIGH",
-                self._first_matching_file(sources, ("write_sandbox", ".rooster/sandbox")),
-                "Workspace writes are routed to .rooster/sandbox; no protected-file policy for core security modules is visible.",
+                self._preferred_file(
+                    sources,
+                    "rooster_engine/core.py",
+                    ("write_sandbox", ".rooster/sandbox"),
+                ),
+                "Workspace writes are routed to .rooster/sandbox, but no protected-path policy for core security modules is visible.",
                 "Add an explicit protected-path policy for guard, approval, emergency-stop, policy, and CI security files.",
             ))
 
@@ -73,7 +81,11 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "command execution",
                 "MEDIUM",
-                self._first_matching_file(sources, ("DEFAULT_ALLOWED", "shell=False")),
+                self._preferred_file(
+                    sources,
+                    "rooster_engine/command.py",
+                    ("DEFAULT_ALLOWED", "shell=False"),
+                ),
                 "Command execution uses an executable allowlist and shell=False, but Python remains a general-purpose execution capability.",
                 "Add argument-level restrictions and explicit per-command policies with bounded runtime and output.",
             ))
@@ -82,7 +94,11 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "network access",
                 "HIGH",
-                self._first_matching_file(sources, ("Permission.NETWORK", "NETWORK")),
+                self._preferred_file(
+                    sources,
+                    "rooster_engine/guard.py",
+                    ("Permission.NETWORK", "NETWORK"),
+                ),
                 "No dedicated network execution capability or host allowlist was found in the inspected implementation.",
                 "Keep network access denied by default and add an explicit bounded host-allowlisted capability when needed.",
             ))
@@ -91,7 +107,11 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "runtime limits",
                 "MEDIUM",
-                self._first_matching_file(sources, ("max_steps", "max_duration_seconds")),
+                self._preferred_file(
+                    sources,
+                    "rooster_engine/runtime.py",
+                    ("max_steps", "max_duration_seconds"),
+                ),
                 "Runtime limits exist for steps, failures, and duration, but no write, byte, or network budgets are exposed.",
                 "Add resource budgets for writes, subprocess output/duration, and future network requests.",
             ))
@@ -110,7 +130,11 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "checkpoint recovery",
                 "MEDIUM",
-                self._first_matching_file(sources, ("shutil.copytree", "checkpoint")),
+                self._preferred_file(
+                    sources,
+                    "rooster_engine/core.py",
+                    ("shutil.copytree", "checkpoint"),
+                ),
                 "Checkpoints are created as snapshots, but no restore operation or manifest/hash verification is visible.",
                 "Add an operator-controlled restore path plus manifest/hash verification.",
             ))
@@ -119,7 +143,11 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "audit integrity",
                 "MEDIUM",
-                self._first_matching_file(sources, ("record_hash", "hash chain")),
+                self._preferred_file(
+                    sources,
+                    "rooster_engine/guard.py",
+                    ("record_hash", "hash chain"),
+                ),
                 "Audit records form a hash chain, but no chain verification routine is exposed.",
                 "Add an audit-chain verification function that detects truncation, reordering, or tampering.",
             ))
@@ -135,8 +163,21 @@ class CodebaseAnalyzer:
         return findings
 
     @staticmethod
+    def _preferred_file(
+        sources: dict[str, str],
+        preferred: str,
+        markers: tuple[str, ...],
+    ) -> str:
+        preferred_text = sources.get(preferred, "")
+        if preferred_text and any(marker in preferred_text for marker in markers):
+            return preferred
+        return CodebaseAnalyzer._first_matching_file(sources, markers)
+
+    @staticmethod
     def _first_matching_file(sources: dict[str, str], markers: tuple[str, ...]) -> str:
         for path, text in sources.items():
+            if path == "rooster_engine/analysis.py":
+                continue
             if any(marker in text for marker in markers):
                 return path
         return "not specified"
