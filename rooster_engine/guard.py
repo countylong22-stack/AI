@@ -120,6 +120,7 @@ class RoosterGuard:
             "checkpoint": ToolPolicy(Permission.READ, Risk.LOW),
             "write_file": ToolPolicy(Permission.WRITE, Risk.MEDIUM, True),
             "run_tests": ToolPolicy(Permission.EXECUTE, Risk.MEDIUM, True),
+            "run_command": ToolPolicy(Permission.EXECUTE, Risk.MEDIUM, True),
             "git_commit": ToolPolicy(Permission.WRITE, Risk.HIGH, True),
             "git_push": ToolPolicy(Permission.NETWORK, Risk.CRITICAL, True),
             "delete_file": ToolPolicy(Permission.DESTRUCTIVE, Risk.CRITICAL, True),
