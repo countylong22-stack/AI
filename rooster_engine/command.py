@@ -22,10 +22,7 @@ class CommandResult:
 class CommandExecutor:
     """Execute only explicitly allowlisted, bounded commands inside the workspace."""
 
-    DEFAULT_ALLOWED = frozenset({
-        "python",
-        "git",
-    })
+    DEFAULT_ALLOWED = frozenset({"python"})
 
     def __init__(
         self,
@@ -65,7 +62,6 @@ class CommandExecutor:
             raise PermissionError(f"Command is not allowlisted: {command[0]}")
 
         workspace = self.guard.workspace
-        self.guard.sandbox_path(".")  # Establish the guarded sandbox boundary.
         action = Action(
             "run_command",
             reason,
@@ -106,8 +102,12 @@ class CommandExecutor:
         except subprocess.TimeoutExpired as exc:
             if self.budget is not None:
                 self.budget.record_failure()
-            stdout = (exc.stdout or "")[: self.max_output_chars]
-            stderr = (exc.stderr or "")[: self.max_output_chars]
+            stdout = (exc.stdout or b"")[: self.max_output_chars]
+            stderr = (exc.stderr or b"")[: self.max_output_chars]
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="replace")
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode("utf-8", errors="replace")
             result = CommandResult(tuple(command), -1, stdout, stderr, timed_out=True)
             self.guard.audit.write(
                 "command_timeout", command=list(command), target=target
