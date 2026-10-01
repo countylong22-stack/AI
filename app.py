@@ -112,6 +112,25 @@ class RoosterEngineerApp:
         self.task_entry.insert("1.0", message)
         self.chat_log("SYSTEM", "Request copied to Engineering Objective. Review it, then click Plan & Run.")
 
+
+    def show_chat_response(self, message):
+        self.chat_log("ROOSTER", message)
+
+    def propose_action(self, action):
+        """Display a deterministic approval request without executing it."""
+        action_id = self.engine.guard.action_id(action)
+        self.chat_log(
+            "ROOSTER",
+            f"PROPOSED ACTION\n"
+            f"Tool: {action.tool}\n"
+            f"Risk: {action.risk.value.upper()}\n"
+            f"Target: {action.target or '(workspace)'}\n"
+            f"Reason: {action.reason}\n"
+            f"Action ID: {action_id}\n"
+            "No action has been executed. Human approval is required."
+        )
+        return action_id
+
     def choose_workspace(self):
         folder = filedialog.askdirectory(initialdir=str(self.workspace))
         if folder:
