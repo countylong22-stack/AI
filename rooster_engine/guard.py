@@ -85,6 +85,7 @@ class RoosterGuard:
             "inspect_workspace": ToolPolicy(Permission.READ, Risk.LOW),
             "read_file": ToolPolicy(Permission.READ, Risk.LOW),
             "git_status": ToolPolicy(Permission.READ, Risk.LOW),
+            "checkpoint": ToolPolicy(Permission.READ, Risk.LOW),
             "write_file": ToolPolicy(Permission.WRITE, Risk.MEDIUM, True),
             "run_tests": ToolPolicy(Permission.EXECUTE, Risk.MEDIUM, True),
             "git_commit": ToolPolicy(Permission.WRITE, Risk.HIGH, True),
