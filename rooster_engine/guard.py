@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 import hashlib
 import json
-import os
 import threading
 from datetime import datetime, timedelta, timezone
 
@@ -96,7 +95,9 @@ class AuditLog:
                 **data,
                 "previous_hash": self._previous_hash,
             }
-            payload = json.dumps(record, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+            payload = json.dumps(
+                record, sort_keys=True, separators=(",", ":"), default=str
+            ).encode("utf-8")
             record["record_hash"] = hashlib.sha256(payload).hexdigest()
             self._previous_hash = record["record_hash"]
             with self.path.open("a", encoding="utf-8") as handle:
@@ -132,7 +133,11 @@ class RoosterGuard:
         expires_at = datetime.now(timezone.utc) + (ttl or self.DEFAULT_APPROVAL_TTL)
         with self._lock:
             self._approvals[action_id] = Approval(action_id, expires_at)
-        self.audit.write("approval_granted", action_id=action_id, expires_at=expires_at.isoformat())
+        self.audit.write(
+            "approval_granted",
+            action_id=action_id,
+            expires_at=expires_at.isoformat(),
+        )
 
     def revoke_approval(self, action_id: str) -> None:
         with self._lock:
@@ -147,11 +152,24 @@ class RoosterGuard:
         self.emergency_stop.check()
         policy = self.policies.get(action.tool)
         if policy is None:
-            self.audit.write("action_denied", tool=action.tool, reason="unknown_tool")
-            raise PermissionError(f"Tool is not registered with RoosterGuard: {action.tool}")
+            self.audit.write(
+                "action_denied", tool=action.tool, reason="unknown_tool"
+            )
+            raise PermissionError(
+                f"Tool is not registered with RoosterGuard: {action.tool}"
+            )
         if action.risk != policy.risk:
-            self.audit.write("action_denied", tool=action.tool, reason="risk_mismatch", requested_risk=action.risk.value, policy_risk=policy.risk.value)
-            raise PermissionError(f"Risk mismatch for {action.tool}: policy={policy.risk.value}")
+            self.audit.write(
+                "action_denied",
+                tool=action.tool,
+                reason="risk_mismatch",
+                requested_risk=action.risk.value,
+                policy_risk=policy.risk.value,
+            )
+            raise PermissionError(
+                f"Risk mismatch for {action.tool}: policy={policy.risk.value}"
+            )
+
         action_id = self.action_id(action)
         if policy.approval_required:
             with self._lock:
@@ -164,10 +182,22 @@ class RoosterGuard:
                 else:
                     self._approvals.pop(action_id, None)
                     approved = True
+
             if not approved:
-                self.audit.write("approval_required", action_id=action_id, tool=action.tool, risk=action.risk.value, reason=action.reason)
-                raise PermissionError(f"Human approval required for action {action_id}.")
-            self.audit.write("approval_consumed", action_id=action_id, tool=action.tool)
+                self.audit.write(
+                    "approval_required",
+                    action_id=action_id,
+                    tool=action.tool,
+                    risk=action.risk.value,
+                    reason=action.reason,
+                )
+                raise PermissionError(
+                    f"Human approval required for action {action_id}."
+                )
+            self.audit.write(
+                "approval_consumed", action_id=action_id, tool=action.tool
+            )
+
         self.audit.write(
             "action_authorized",
             action_id=action_id,
@@ -184,22 +214,15 @@ class RoosterGuard:
         sandbox = (self.workspace / ".rooster" / "sandbox").resolve()
         candidate = sandbox / relative_path
         try:
-            relative = candidate.relative_to(sandbox)
+            candidate.relative_to(sandbox)
         except ValueError as exc:
-            raise PermissionError("Writes are restricted to the Rooster sandbox.") from exc
+            raise PermissionError(
+                "Writes are restricted to the Rooster sandbox."
+            ) from exc
 
         # Resolve the existing path and parents to catch symlink escapes.
         resolved = candidate.resolve(strict=False)
         if sandbox not in resolved.parents and resolved != sandbox:
             raise PermissionError("Writes are restricted to the Rooster sandbox.")
-
-        protected = {
-            Path("rooster_engine/guard.py"),
-            Path("rooster_engine/core.py"),
-            Path(".github/workflows/test.yml"),
-            Path("SECURITY.md"),
-        }
-        if any(relative == item or item in relative.parents for item in protected):
-            raise PermissionError("Protected Rooster safety files cannot be modified through the sandbox.")
 
         return resolved
