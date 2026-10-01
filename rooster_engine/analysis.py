@@ -28,23 +28,20 @@ class CodebaseAnalyzer:
         max_files: int = 40,
         max_chars: int = 12000,
     ) -> dict[str, Any]:
-        files = [
-            item for item in inventory
-            if item.get("type") == "file"
-            and Path(str(item.get("path", item.get("name", "")))).suffix.lower()
-            in self.DEFAULT_EXTENSIONS
-        ][:max_files]
+        discovered = []
+        for path in self.workspace.rglob("*"):
+            if not path.is_file():
+                continue
+            if ".rooster" in path.parts or "__pycache__" in path.parts or ".git" in path.parts:
+                continue
+            if path.suffix.lower() in self.DEFAULT_EXTENSIONS:
+                discovered.append(path)
+        files = sorted(discovered, key=lambda path: str(path).lower())[:max_files]
         sources: dict[str, str] = {}
-        for item in files:
-            raw = str(item.get("path", item.get("name", "")))
-            relative = Path(raw).name if "\" not in raw and "/" not in raw else raw
+        for path in files:
             try:
-                path = Path(relative)
-                if path.is_absolute():
-                    path = path.relative_to(self.workspace)
-                sources[str(path)] = (self.workspace / path).read_text(
-                    encoding="utf-8"
-                )[:max_chars]
+                relative = path.relative_to(self.workspace)
+                sources[str(relative)] = path.read_text(encoding="utf-8")[:max_chars]
             except (OSError, UnicodeError, ValueError):
                 continue
 
