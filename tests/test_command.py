@@ -42,7 +42,7 @@ class CommandExecutorTests(unittest.TestCase):
             from rooster_engine.guard import Action, Risk
             action = Action("run_command", "cwd test",
                             "Execute allowlisted command: python -c import os; print(os.getcwd())",
-                            "stdout", Risk.MEDIUM)
+                            "workspace cwd", Risk.MEDIUM)
             guard.approve(guard.action_id(action))
             result = executor.run(
                 ["python", "-c", "import os; print(os.getcwd())"],
