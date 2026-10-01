@@ -24,7 +24,23 @@ class RuntimeBudgetTests(unittest.TestCase):
             RuntimeLimits(max_failures=-1)
         with self.assertRaises(ValueError):
             RuntimeLimits(max_duration_seconds=0)
+        with self.assertRaises(ValueError):
+            RuntimeLimits(max_output_chars=0)
+        with self.assertRaises(ValueError):
+            RuntimeLimits(max_write_bytes=0)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_output_budget_is_enforced(self):
+        budget = RuntimeBudget(RuntimeLimits(max_output_chars=5))
+        budget.record_output(5)
+        with self.assertRaises(RuntimeError):
+            budget.record_output(1)
+
+    def test_write_budget_is_enforced(self):
+        budget = RuntimeBudget(RuntimeLimits(max_write_bytes=5))
+        budget.record_write(5)
+        with self.assertRaises(RuntimeError):
+            budget.record_write(1)
