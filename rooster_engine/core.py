@@ -4,6 +4,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Callable, Any
 import json
+import os
 import shutil
 import subprocess
 from datetime import datetime
@@ -37,7 +38,17 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return sorted(self._tools)
 
-    def run(self, name: str, *args, reason: str = "Tool requested by engineering task", action: str = "Execute tool", evidence: str = "Tool result", risk: Risk = Risk.LOW, target: str = "", **kwargs) -> Any:
+    def run(
+        self,
+        name: str,
+        *args,
+        reason: str = "Tool requested by engineering task",
+        action: str = "Execute tool",
+        evidence: str = "Tool result",
+        risk: Risk = Risk.LOW,
+        target: str = "",
+        **kwargs,
+    ) -> Any:
         if name not in self._tools:
             raise KeyError(f"Unknown tool: {name}")
         self.guard.authorize(Action(name, reason, action, evidence, risk, target))
@@ -45,10 +56,17 @@ class ToolRegistry:
         self.guard.audit.write("action_started", tool=name, target=target)
         try:
             result = self._tools[name](*args, **kwargs)
-            self.guard.audit.write("action_completed", tool=name, target=target, result_summary=str(result)[:500])
+            self.guard.audit.write(
+                "action_completed",
+                tool=name,
+                target=target,
+                result_summary=str(result)[:500],
+            )
             return result
         except Exception as exc:
-            self.guard.audit.write("action_failed", tool=name, target=target, error=str(exc))
+            self.guard.audit.write(
+                "action_failed", tool=name, target=target, error=str(exc)
+            )
             raise
 
 
@@ -63,40 +81,81 @@ class Workspace:
         self.checkpoints.mkdir(parents=True, exist_ok=True)
 
     def inspect(self, limit: int = 100) -> list[dict[str, Any]]:
+        if limit < 1:
+            return []
         items = []
         for path in sorted(self.root.iterdir(), key=lambda p: p.name.lower()):
             if path.name == ".rooster":
                 continue
-            items.append({"name": path.name, "type": "directory" if path.is_dir() else "file", "path": str(path)})
+            items.append(
+                {
+                    "name": path.name,
+                    "type": "directory" if path.is_dir() else "file",
+                    "path": str(path),
+                }
+            )
             if len(items) >= limit:
                 break
         return items
 
-    def read_text(self, relative_path: str, max_chars: int = 50000) -> str:
-        path = (self.root / relative_path).resolve()
-        if self.root not in path.parents and path != self.root:
+    def _workspace_path(self, relative_path: str) -> Path:
+        candidate = self.root / relative_path
+        resolved = candidate.resolve(strict=False)
+        if self.root not in resolved.parents and resolved != self.root:
             raise ValueError("Path escapes workspace.")
+        return resolved
+
+    def read_text(self, relative_path: str, max_chars: int = 50000) -> str:
+        if max_chars < 0:
+            raise ValueError("max_chars must be non-negative")
+        path = self._workspace_path(relative_path)
         return path.read_text(encoding="utf-8")[:max_chars]
 
     def git_status(self) -> str:
-        result = subprocess.run(["git", "status", "--short"], cwd=self.root, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(
+            ["git", "status", "--short"],
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
         return (result.stdout + result.stderr).strip()
 
     def write_sandbox(self, relative_path: str, content: str) -> str:
-        path = self.sandbox / relative_path
-        path = path.resolve()
-        if self.sandbox.resolve() not in path.parents:
+        candidate = self.sandbox / relative_path
+        resolved = candidate.resolve(strict=False)
+        sandbox = self.sandbox.resolve()
+        if sandbox not in resolved.parents or not relative_path:
             raise ValueError("Sandbox path escapes .rooster/sandbox.")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-        return str(path)
+
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        temp = resolved.with_name(f".{resolved.name}.tmp-{os.getpid()}")
+        temp.write_text(content, encoding="utf-8")
+        os.replace(temp, resolved)
+        return str(resolved)
 
     def checkpoint(self, label: str) -> Path:
-        safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in label).strip("_") or "checkpoint"
-        target = self.checkpoints / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{safe}"
+        safe = (
+            "".join(c if c.isalnum() or c in "-_" else "_" for c in label)
+            .strip("_")
+            or "checkpoint"
+        )
+        target = self.checkpoints / (
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{safe}"
+        )
         if target.exists():
             target = target.with_name(target.name + "_1")
-        shutil.copytree(self.root, target, ignore=shutil.ignore_patterns(".git", ".rooster", "__pycache__", "*.pyc"))
+
+        # Preserve symlinks rather than following them into unrelated locations.
+        shutil.copytree(
+            self.root,
+            target,
+            symlinks=True,
+            ignore=shutil.ignore_patterns(
+                ".git", ".rooster", "__pycache__", "*.pyc"
+            ),
+        )
         return target
 
 
@@ -109,12 +168,20 @@ class TaskStore:
         if not self.path.exists():
             return []
         try:
-            return [Task(**item) for item in json.loads(self.path.read_text(encoding="utf-8"))]
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(payload, list):
+                return []
+            return [Task(**item) for item in payload if isinstance(item, dict)]
         except (OSError, ValueError, TypeError):
             return []
 
     def save(self, tasks: list[Task]) -> None:
-        self.path.write_text(json.dumps([asdict(task) for task in tasks], indent=2), encoding="utf-8")
+        payload = json.dumps(
+            [asdict(task) for task in tasks], indent=2, ensure_ascii=False
+        )
+        temp = self.path.with_name(f".{self.path.name}.tmp-{os.getpid()}")
+        temp.write_text(payload, encoding="utf-8")
+        os.replace(temp, self.path)
 
 
 class AutonomousEngineer:
@@ -122,7 +189,9 @@ class AutonomousEngineer:
         self.workspace = Workspace(workspace)
         self.store = TaskStore(memory_file)
         self.tasks = self.store.load()
-        self.guard = RoosterGuard(self.workspace.root, self.workspace.rooster_dir / "audit.jsonl")
+        self.guard = RoosterGuard(
+            self.workspace.root, self.workspace.rooster_dir / "audit.jsonl"
+        )
         self.tools = ToolRegistry(self.guard)
         self._register_tools()
 
@@ -158,7 +227,15 @@ class AutonomousEngineer:
         self.guard.audit.write("emergency_stop_reset", source="operator")
 
     def create_checkpoint(self, label: str = "pre_change") -> Path:
-        path = self.tools.run("checkpoint", label, reason="Protect the current workspace before further work", action="Create recovery checkpoint", evidence="Checkpoint directory exists", risk=Risk.LOW, target=label)
+        path = self.tools.run(
+            "checkpoint",
+            label,
+            reason="Protect the current workspace before further work",
+            action="Create recovery checkpoint",
+            evidence="Checkpoint directory exists",
+            risk=Risk.LOW,
+            target=label,
+        )
         self.guard.audit.write("checkpoint_created", path=str(path), label=label)
         return path
 
@@ -171,17 +248,46 @@ class AutonomousEngineer:
         self.guard.audit.write("task_started", objective=objective, **rationale)
         try:
             self.guard.emergency_stop.check()
-            workspace_items = self.tools.run("inspect_workspace", 50, reason=rationale["reason"], action="Inspect workspace", evidence="Workspace inventory", risk=Risk.LOW)
-            status = self.tools.run("git_status", reason=rationale["reason"], action="Read git status", evidence="Git status output", risk=Risk.LOW)
+            workspace_items = self.tools.run(
+                "inspect_workspace",
+                50,
+                reason=rationale["reason"],
+                action="Inspect workspace",
+                evidence="Workspace inventory",
+                risk=Risk.LOW,
+            )
+            status = self.tools.run(
+                "git_status",
+                reason=rationale["reason"],
+                action="Read git status",
+                evidence="Git status output",
+                risk=Risk.LOW,
+            )
             checkpoint = self.create_checkpoint("task_start")
-            task.result = json.dumps({"plan": self.plan(objective), "workspace_items": workspace_items, "git_status": status, "checkpoint": str(checkpoint), "tools": self.tools.names()}, indent=2)
+            task.result = json.dumps(
+                {
+                    "plan": self.plan(objective),
+                    "workspace_items": workspace_items,
+                    "git_status": status,
+                    "checkpoint": str(checkpoint),
+                    "tools": self.tools.names(),
+                },
+                indent=2,
+            )
             task.status = "completed"
-            task.evidence = "Workspace inspected, git status captured, and checkpoint created. No project files modified."
-            self.guard.audit.write("task_completed", objective=objective, evidence=task.evidence)
+            task.evidence = (
+                "Workspace inspected, git status captured, and checkpoint created. "
+                "No project files modified."
+            )
+            self.guard.audit.write(
+                "task_completed", objective=objective, evidence=task.evidence
+            )
         except Exception as exc:
             task.status = "stopped" if self.guard.emergency_stop.stopped else "failed"
             task.result = str(exc)
-            self.guard.audit.write("task_failed", objective=objective, error=str(exc))
+            self.guard.audit.write(
+                "task_failed", objective=objective, error=str(exc)
+            )
         task.completed = datetime.now().isoformat(timespec="seconds")
         self.store.save(self.tasks)
         return task
