@@ -31,6 +31,7 @@ class CommandExecutor:
         allowed_commands: set[str] | frozenset[str] | None = None,
         timeout_seconds: float = 30.0,
         max_output_chars: int = 20000,
+        allow_general_python: bool = False,
     ) -> None:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
@@ -43,6 +44,40 @@ class CommandExecutor:
         )
         self.timeout_seconds = timeout_seconds
         self.max_output_chars = max_output_chars
+        self.allow_general_python = allow_general_python
+
+    def _validate_arguments(self, command: Sequence[str]) -> None:
+        """Apply executable-specific argument policy before approval/execution."""
+        executable = Path(command[0]).name.lower()
+        if executable != "python" or self.allow_general_python:
+            return
+
+        args = list(command[1:])
+        if not args:
+            raise PermissionError("Python requires the guarded unittest module in default mode.")
+        if args[0] != "-m" or len(args) < 2 or args[1].lower() != "unittest":
+            self.guard.audit.write(
+                "command_denied",
+                command=list(command),
+                reason="python_arguments_not_allowlisted",
+            )
+            raise PermissionError(
+                "Default Python policy permits only: python -m unittest ..."
+            )
+        forbidden_modules = {
+            "socket", "http.server", "urllib", "urllib.request", "urllib3",
+            "requests", "httpx", "ftplib", "smtplib", "imaplib", "poplib",
+            "asyncio",
+        }
+        if len(args) >= 3 and args[2].lower() in forbidden_modules:
+            self.guard.audit.write(
+                "command_denied",
+                command=list(command),
+                reason="python_network_module_denied",
+            )
+            raise PermissionError(
+                f"Python module is denied by default policy: {args[2]}"
+            )
 
     def run(
         self,
@@ -61,6 +96,7 @@ class CommandExecutor:
             )
             raise PermissionError(f"Command is not allowlisted: {command[0]}")
 
+        self._validate_arguments(command)
         workspace = self.guard.workspace
         action = Action(
             "run_command",
