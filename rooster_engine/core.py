@@ -196,6 +196,7 @@ class AutonomousEngineer:
             self.workspace.root, self.workspace.rooster_dir / "audit.jsonl"
         )
         self.tools = ToolRegistry(self.guard)
+        self.verifier = VerificationEngine()
         self._register_tools()
 
     def _register_tools(self) -> None:
@@ -204,6 +205,10 @@ class AutonomousEngineer:
         self.tools.register("read_file", self.workspace.read_text)
         self.tools.register("write_file", self.write_file)
         self.tools.register("checkpoint", self.workspace.checkpoint)
+        self.tools.register(
+            "run_tests",
+            lambda: self.verifier.run_test_suite(self.workspace.root, self.guard),
+        )
 
     def write_file(self, relative_path: str, content: str) -> str:
         """Write only to the guarded sandbox and enforce protected-path policy."""
@@ -255,7 +260,7 @@ class AutonomousEngineer:
         self.store.save(self.tasks)
         self.guard.audit.write("task_started", objective=objective, **rationale)
         budget = RuntimeBudget(limits)
-        verifier = VerificationEngine()
+        verifier = self.verifier
         try:
             self.guard.emergency_stop.check()
             budget.begin_step()
