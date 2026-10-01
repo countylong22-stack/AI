@@ -1,5 +1,6 @@
 import os
 import subprocess
+import json
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -137,7 +138,33 @@ class RoosterEngineerApp:
         task = self.engine.run(objective)
         self.log(f"TASK STATUS: {task.status}")
         if task.status == "completed":
-            self.log("Verification completed and checkpoint recorded.")
+            try:
+                result = json.loads(task.result)
+                analysis = result.get("analysis", {})
+                files_read = analysis.get("files_read", [])
+                findings = analysis.get("findings", [])
+                self.log(f"[ANALYSIS] Local analyzer read {len(files_read)} source files.")
+                for path in files_read:
+                    self.log(f"  [READ] {path}")
+                for finding in findings:
+                    self.log(
+                        f"[FINDING] {finding.get('priority', 'INFO')} — "
+                        f"{finding.get('area', 'inspection')}"
+                    )
+                    self.log(f"  Evidence: {finding.get('evidence', '')}")
+                    self.log(f"  Recommendation: {finding.get('recommendation', '')}")
+                verification = result.get("verification", {})
+                observation = verification.get("observation", {})
+                checkpoint = verification.get("checkpoint", {})
+                self.log("[VERIFICATION]")
+                self.log(f"  Read-only: {analysis.get('read_only', False)}")
+                self.log("  Workspace files modified: 0 (analysis path is read-only)")
+                self.log(f"  Checkpoint: {checkpoint.get('checkpoint', result.get('checkpoint', 'unknown'))}")
+                self.log(f"  Observation captured: {bool(observation)}")
+                self.log("Local analysis completed without an AI credit/API call.")
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                self.log(f"Local analysis result could not be displayed: {exc}")
+                self.log(task.result)
         else:
             self.log(f"ERROR: {task.result}")
         self.root.after(0, self.refresh_tasks)
