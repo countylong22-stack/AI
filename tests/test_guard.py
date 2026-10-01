@@ -113,5 +113,25 @@ class GuardTests(unittest.TestCase):
             self.assertIn("task_completed", text)
 
 
+    def test_task_run_records_verification_and_runtime_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            engineer = AutonomousEngineer(tmp, Path(tmp) / "tasks.json")
+            task = engineer.run("inspect workspace")
+            self.assertEqual(task.status, "completed")
+            payload = json.loads(task.result)
+            self.assertIn("verification", payload)
+            self.assertIn("runtime", payload)
+            self.assertGreaterEqual(payload["runtime"]["steps"], 3)
+
+    def test_task_run_stops_when_step_budget_is_too_small(self):
+        from rooster_engine.runtime import RuntimeLimits
+
+        with tempfile.TemporaryDirectory() as tmp:
+            engineer = AutonomousEngineer(tmp, Path(tmp) / "tasks.json")
+            task = engineer.run("inspect workspace", RuntimeLimits(max_steps=2))
+            self.assertEqual(task.status, "failed")
+            self.assertIn("step limit", task.result.lower())
+
+
 if __name__ == "__main__":
     unittest.main()
