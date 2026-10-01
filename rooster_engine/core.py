@@ -50,11 +50,17 @@ class ToolRegistry:
         evidence: str = "Tool result",
         risk: Risk = Risk.LOW,
         target: str = "",
+        actor: str = "human",
+        task_id: str = "",
         **kwargs,
     ) -> Any:
         if name not in self._tools:
             raise KeyError(f"Unknown tool: {name}")
-        self.guard.authorize(Action(name, reason, action, evidence, risk, target))
+        self.guard.authorize(
+            Action(name, reason, action, evidence, risk, target),
+            actor=actor,
+            task_id=task_id,
+        )
         self.guard.emergency_stop.check()
         self.guard.audit.write("action_started", tool=name, target=target)
         try:
