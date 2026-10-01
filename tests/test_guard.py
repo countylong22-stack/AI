@@ -18,7 +18,13 @@ class GuardTests(unittest.TestCase):
     def test_high_risk_requires_exact_one_time_approval(self):
         with tempfile.TemporaryDirectory() as tmp:
             guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
-            action = Action("git_push", "publish approved changes", "push", "remote accepts commit", Risk.CRITICAL)
+            action = Action(
+                "git_push",
+                "publish approved changes",
+                "push",
+                "remote accepts commit",
+                Risk.CRITICAL,
+            )
             with self.assertRaises(PermissionError):
                 guard.authorize(action)
             action_id = guard.action_id(action)
@@ -30,7 +36,13 @@ class GuardTests(unittest.TestCase):
     def test_expired_approval_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
-            action = Action("git_commit", "save approved changes", "commit", "git accepts commit", Risk.HIGH)
+            action = Action(
+                "git_commit",
+                "save approved changes",
+                "commit",
+                "git accepts commit",
+                Risk.HIGH,
+            )
             guard.approve(guard.action_id(action), ttl=timedelta(seconds=-1))
             with self.assertRaises(PermissionError):
                 guard.authorize(action)
@@ -41,25 +53,46 @@ class GuardTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 guard.sandbox_path("../../outside.txt")
 
-    def test_sandbox_protects_safety_files(self):
+    def test_sandbox_returns_only_in_sandbox(self):
         with tempfile.TemporaryDirectory() as tmp:
             guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
+            path = guard.sandbox_path("rooster_engine/guard.py")
+            sandbox = (Path(tmp) / ".rooster" / "sandbox").resolve()
+            self.assertIn(sandbox, path.parents)
+            self.assertNotEqual(path, (Path(tmp) / "rooster_engine" / "guard.py").resolve())
+
+    def test_sandbox_rejects_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            guard = RoosterGuard(root, root / "audit.jsonl")
+            outside = root / "outside"
+            outside.mkdir()
+            link = root / ".rooster" / "sandbox" / "escape"
+            try:
+                link.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("Symlink creation is unavailable on this Windows configuration.")
             with self.assertRaises(PermissionError):
-                guard.sandbox_path("rooster_engine/guard.py")
+                guard.sandbox_path("escape/file.txt")
 
     def test_emergency_stop_blocks_actions(self):
         with tempfile.TemporaryDirectory() as tmp:
             guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
             guard.emergency_stop.stop()
             with self.assertRaises(RuntimeError):
-                guard.authorize(Action("inspect_workspace", "inspect", "list", "list returned", Risk.LOW))
+                guard.authorize(
+                    Action("inspect_workspace", "inspect", "list", "list returned", Risk.LOW)
+                )
 
     def test_audit_log_is_hash_chained(self):
         with tempfile.TemporaryDirectory() as tmp:
             audit = Path(tmp) / "audit.jsonl"
             guard = RoosterGuard(Path(tmp), audit)
             guard.authorize(Action("inspect_workspace", "inspect", "list", "inventory", Risk.LOW))
-            records = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+            records = [
+                json.loads(line)
+                for line in audit.read_text(encoding="utf-8").splitlines()
+            ]
             self.assertGreaterEqual(len(records), 1)
             self.assertTrue(records[0]["record_hash"])
             self.assertEqual(records[0]["previous_hash"], "")
