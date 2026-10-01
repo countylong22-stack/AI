@@ -10,6 +10,8 @@ import subprocess
 from datetime import datetime
 
 from .guard import Action, Risk, RoosterGuard
+from .runtime import RuntimeBudget, RuntimeLimits
+from .verification import VerificationEngine
 
 
 @dataclass
@@ -239,15 +241,18 @@ class AutonomousEngineer:
         self.guard.audit.write("checkpoint_created", path=str(path), label=label)
         return path
 
-    def run(self, objective: str) -> Task:
+    def run(self, objective: str, limits: RuntimeLimits | None = None) -> Task:
         task = Task(objective=objective, status="running")
         rationale = self.reason_action_evidence(objective)
         task.reason, task.evidence = rationale["reason"], rationale["evidence"]
         self.tasks.append(task)
         self.store.save(self.tasks)
         self.guard.audit.write("task_started", objective=objective, **rationale)
+        budget = RuntimeBudget(limits)
+        verifier = VerificationEngine()
         try:
             self.guard.emergency_stop.check()
+            budget.begin_step()
             workspace_items = self.tools.run(
                 "inspect_workspace",
                 50,
@@ -256,6 +261,7 @@ class AutonomousEngineer:
                 evidence="Workspace inventory",
                 risk=Risk.LOW,
             )
+            budget.begin_step()
             status = self.tools.run(
                 "git_status",
                 reason=rationale["reason"],
@@ -263,7 +269,12 @@ class AutonomousEngineer:
                 evidence="Git status output",
                 risk=Risk.LOW,
             )
+            budget.begin_step()
             checkpoint = self.create_checkpoint("task_start")
+            observation = verifier.verify_task_observation(workspace_items, status)
+            checkpoint_check = verifier.verify_checkpoint(checkpoint)
+            if not observation.success or not checkpoint_check.success:
+                raise RuntimeError("Verification failed for task observations or checkpoint.")
             task.result = json.dumps(
                 {
                     "plan": self.plan(objective),
@@ -271,6 +282,14 @@ class AutonomousEngineer:
                     "git_status": status,
                     "checkpoint": str(checkpoint),
                     "tools": self.tools.names(),
+                    "verification": {
+                        "observation": observation.evidence,
+                        "checkpoint": checkpoint_check.evidence,
+                    },
+                    "runtime": {
+                        "steps": budget.steps,
+                        "failures": budget.failures,
+                    },
                 },
                 indent=2,
             )
@@ -283,6 +302,7 @@ class AutonomousEngineer:
                 "task_completed", objective=objective, evidence=task.evidence
             )
         except Exception as exc:
+            budget.record_failure()
             task.status = "stopped" if self.guard.emergency_stop.stopped else "failed"
             task.result = str(exc)
             self.guard.audit.write(
