@@ -11,7 +11,9 @@ class CodebaseAnalyzerTests(unittest.TestCase):
             root = Path(tmp)
             (root / "rooster_engine").mkdir()
             (root / "rooster_engine" / "guard.py").write_text(
-                'Permission.NETWORK\nrecord_hash = "x"\n', encoding="utf-8"
+                'Permission.NETWORK
+record_hash = "x"
+', encoding="utf-8"
             )
             inventory = [{"name": "rooster_engine/guard.py", "type": "file"}]
             result = CodebaseAnalyzer(root).analyze(inventory)
@@ -26,13 +28,53 @@ class CodebaseAnalyzerTests(unittest.TestCase):
             root = Path(tmp)
             (root / "rooster_engine").mkdir()
             (root / "rooster_engine" / "command.py").write_text(
-                'DEFAULT_ALLOWED = frozenset({"python"})\n', encoding="utf-8"
+                'DEFAULT_ALLOWED = frozenset({"python"})
+', encoding="utf-8"
             )
             result = CodebaseAnalyzer(root).analyze([])
             finding = next(
                 item for item in result["findings"] if item["area"] == "command execution"
             )
             self.assertEqual(finding["file"], "rooster_engine/command.py")
+
+    def test_secure_command_controls_do_not_trigger_command_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "rooster_engine").mkdir()
+            (root / "rooster_engine" / "command.py").write_text(
+                '''
+DEFAULT_ALLOWED = frozenset({"python"})
+allow_general_python: bool = False
+def _validate_arguments(command): ...
+shell=False
+timeout_seconds = 30.0
+''',
+                encoding="utf-8",
+            )
+            result = CodebaseAnalyzer(root).analyze([])
+            self.assertFalse(
+                any(item["area"] == "command execution" for item in result["findings"])
+            )
+
+    def test_current_runtime_budgets_do_not_trigger_runtime_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "rooster_engine").mkdir()
+            (root / "rooster_engine" / "runtime.py").write_text(
+                "max_output_chars = 20000
+max_write_bytes = 1000000
+",
+                encoding="utf-8",
+            )
+            (root / "rooster_engine" / "command.py").write_text(
+                "timeout_seconds = 30.0
+",
+                encoding="utf-8",
+            )
+            result = CodebaseAnalyzer(root).analyze([])
+            self.assertFalse(
+                any(item["area"] == "runtime limits" for item in result["findings"])
+            )
 
     def test_findings_are_prioritized(self):
         findings = [
