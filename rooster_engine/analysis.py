@@ -1,0 +1,137 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True)
+class Finding:
+    area: str
+    priority: str
+    evidence: str
+    recommendation: str
+
+
+class CodebaseAnalyzer:
+    """Deterministic, read-only source inspection for evidence-backed engineering plans."""
+
+    DEFAULT_EXTENSIONS = {".py", ".ps1", ".yml", ".yaml", ".md", ".toml", ".json"}
+
+    def __init__(self, workspace: Path):
+        self.workspace = workspace.resolve()
+
+    def analyze(
+        self,
+        inventory: list[dict[str, Any]],
+        *,
+        max_files: int = 40,
+        max_chars: int = 12000,
+    ) -> dict[str, Any]:
+        files = [
+            item for item in inventory
+            if item.get("type") == "file"
+            and Path(str(item.get("path", item.get("name", "")))).suffix.lower()
+            in self.DEFAULT_EXTENSIONS
+        ][:max_files]
+        sources: dict[str, str] = {}
+        for item in files:
+            raw = str(item.get("path", item.get("name", "")))
+            relative = Path(raw).name if "\" not in raw and "/" not in raw else raw
+            try:
+                path = Path(relative)
+                if path.is_absolute():
+                    path = path.relative_to(self.workspace)
+                sources[str(path)] = (self.workspace / path).read_text(
+                    encoding="utf-8"
+                )[:max_chars]
+            except (OSError, UnicodeError, ValueError):
+                continue
+
+        findings = self._findings(sources)
+        return {
+            "files_read": sorted(sources),
+            "file_count": len(sources),
+            "findings": [finding.__dict__ for finding in findings],
+            "read_only": True,
+        }
+
+    def _findings(self, sources: dict[str, str]) -> list[Finding]:
+        joined = "\n".join(
+            f"--- {name} ---\n{text}" for name, text in sources.items()
+        )
+        findings: list[Finding] = []
+
+        if "write_sandbox" in joined and ".rooster/sandbox" in joined:
+            findings.append(Finding(
+                "self-modification",
+                "HIGH",
+                "Workspace writes are routed to .rooster/sandbox; no protected-file policy for core security modules is visible.",
+                "Add an explicit protected-path policy for guard, approval, emergency-stop, policy, and CI security files.",
+            ))
+
+        if 'DEFAULT_ALLOWED = frozenset({"python"})' in joined or "shell=False" in joined:
+            findings.append(Finding(
+                "command execution",
+                "MEDIUM",
+                "Command execution uses an executable allowlist and shell=False, but Python remains a general-purpose execution capability.",
+                "Add argument-level restrictions and explicit per-command policies with bounded runtime and output.",
+            ))
+
+        if "Permission.NETWORK" not in joined:
+            findings.append(Finding(
+                "network access",
+                "HIGH",
+                "No dedicated network execution capability or host allowlist was found in the inspected implementation.",
+                "Keep network access denied by default and add an explicit bounded host-allowlisted capability when needed.",
+            ))
+
+        if "max_steps" in joined and "max_duration_seconds" in joined:
+            findings.append(Finding(
+                "runtime limits",
+                "MEDIUM",
+                "Runtime limits exist for steps, failures, and duration, but no write, byte, or network budgets are exposed.",
+                "Add resource budgets for writes, subprocess output/duration, and future network requests.",
+            ))
+
+        verification = sources.get("rooster_engine/verification.py", "")
+        if "verify_task_observation" in verification and "subprocess" not in verification:
+            findings.append(Finding(
+                "verification",
+                "HIGH",
+                "Verification validates observations and checkpoint existence but does not independently execute the project's test suite.",
+                "Add guarded test execution that records the exact command, exit status, and bounded output as evidence.",
+            ))
+
+        if "shutil.copytree" in joined and "restore" not in joined.lower():
+            findings.append(Finding(
+                "checkpoint recovery",
+                "MEDIUM",
+                "Checkpoints are created as snapshots, but no restore operation or manifest/hash verification is visible.",
+                "Add an operator-controlled restore path plus manifest/hash verification.",
+            ))
+
+        if "record_hash" in joined and "verify_chain" not in joined:
+            findings.append(Finding(
+                "audit integrity",
+                "MEDIUM",
+                "Audit records form a hash chain, but no chain verification routine is exposed.",
+                "Add an audit-chain verification function that detects truncation, reordering, or tampering.",
+            ))
+
+        if not findings:
+            findings.append(Finding(
+                "inspection",
+                "INFO",
+                "No configured heuristic matched the inspected source.",
+                "Review the raw inventory and add domain-specific analyzers as the engine grows.",
+            ))
+        return findings
+
+
+def prioritize_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "INFO": 3}
+    return sorted(
+        findings,
+        key=lambda item: (order.get(item.get("priority", "INFO"), 9), item.get("area", "")),
+    )
