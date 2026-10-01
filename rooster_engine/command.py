@@ -89,6 +89,9 @@ class CommandExecutor:
     ) -> CommandResult:
         if not command or any(not isinstance(part, str) or not part for part in command):
             raise ValueError("Command must be a non-empty sequence of non-empty strings.")
+        # Emergency stop is the first runtime authorization gate after basic input validation.
+        # Policy validation must never run ahead of the kill switch.
+        self.guard.emergency_stop.check()
         executable = Path(command[0]).name.lower()
         if executable not in {name.lower() for name in self.allowed_commands}:
             self.guard.audit.write(
