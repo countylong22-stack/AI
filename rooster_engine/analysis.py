@@ -41,7 +41,7 @@ class CodebaseAnalyzer:
         for path in files:
             try:
                 relative = path.relative_to(self.workspace)
-                sources[str(relative)] = path.read_text(encoding="utf-8")[:max_chars]
+                sources[relative.as_posix()] = path.read_text(encoding="utf-8")[:max_chars]
             except (OSError, UnicodeError, ValueError):
                 continue
 
