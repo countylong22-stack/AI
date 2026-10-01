@@ -112,6 +112,23 @@ class GuardTests(unittest.TestCase):
             self.assertEqual(guard.protected_path(".github/workflows/release/build.yml"), ".github/workflows/*")
             self.assertIsNone(guard.protected_path("src/example.py"))
 
+    def test_write_tool_enforces_protected_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            engineer = AutonomousEngineer(tmp, Path(tmp) / "tasks.json")
+            with self.assertRaises(PermissionError):
+                engineer.tools.run(
+                    "write_file",
+                    "rooster_engine/guard.py",
+                    "should never reach the workspace",
+                    reason="test protected write",
+                    action="write protected file",
+                    evidence="write should be denied",
+                    risk=Risk.MEDIUM,
+                    target="rooster_engine/guard.py",
+                )
+            audit = Path(tmp) / ".rooster" / "audit.jsonl"
+            self.assertIn("protected_write_denied", audit.read_text(encoding="utf-8"))
+
     def test_sandbox_rejects_escape(self):
         with tempfile.TemporaryDirectory() as tmp:
             guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
