@@ -29,10 +29,6 @@ class RuntimeBudgetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             RuntimeLimits(max_write_bytes=0)
 
-
-if __name__ == "__main__":
-    unittest.main()
-
     def test_output_budget_is_enforced(self):
         budget = RuntimeBudget(RuntimeLimits(max_output_chars=5))
         budget.record_output(5)
@@ -44,3 +40,7 @@ if __name__ == "__main__":
         budget.record_write(5)
         with self.assertRaises(RuntimeError):
             budget.record_write(1)
+
+
+if __name__ == "__main__":
+    unittest.main()
