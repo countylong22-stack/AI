@@ -9,6 +9,7 @@ from typing import Any
 class Finding:
     area: str
     priority: str
+    file: str
     evidence: str
     recommendation: str
 
@@ -63,6 +64,7 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "self-modification",
                 "HIGH",
+                self._first_matching_file(sources, ("write_sandbox", ".rooster/sandbox")),
                 "Workspace writes are routed to .rooster/sandbox; no protected-file policy for core security modules is visible.",
                 "Add an explicit protected-path policy for guard, approval, emergency-stop, policy, and CI security files.",
             ))
@@ -71,6 +73,7 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "command execution",
                 "MEDIUM",
+                self._first_matching_file(sources, ("DEFAULT_ALLOWED", "shell=False")),
                 "Command execution uses an executable allowlist and shell=False, but Python remains a general-purpose execution capability.",
                 "Add argument-level restrictions and explicit per-command policies with bounded runtime and output.",
             ))
@@ -79,6 +82,7 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "network access",
                 "HIGH",
+                self._first_matching_file(sources, ("Permission.NETWORK", "NETWORK")),
                 "No dedicated network execution capability or host allowlist was found in the inspected implementation.",
                 "Keep network access denied by default and add an explicit bounded host-allowlisted capability when needed.",
             ))
@@ -87,6 +91,7 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "runtime limits",
                 "MEDIUM",
+                self._first_matching_file(sources, ("max_steps", "max_duration_seconds")),
                 "Runtime limits exist for steps, failures, and duration, but no write, byte, or network budgets are exposed.",
                 "Add resource budgets for writes, subprocess output/duration, and future network requests.",
             ))
@@ -96,6 +101,7 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "verification",
                 "HIGH",
+                "rooster_engine/verification.py",
                 "Verification validates observations and checkpoint existence but does not independently execute the project's test suite.",
                 "Add guarded test execution that records the exact command, exit status, and bounded output as evidence.",
             ))
@@ -104,6 +110,7 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "checkpoint recovery",
                 "MEDIUM",
+                self._first_matching_file(sources, ("shutil.copytree", "checkpoint")),
                 "Checkpoints are created as snapshots, but no restore operation or manifest/hash verification is visible.",
                 "Add an operator-controlled restore path plus manifest/hash verification.",
             ))
@@ -112,6 +119,7 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "audit integrity",
                 "MEDIUM",
+                self._first_matching_file(sources, ("record_hash", "hash chain")),
                 "Audit records form a hash chain, but no chain verification routine is exposed.",
                 "Add an audit-chain verification function that detects truncation, reordering, or tampering.",
             ))
@@ -120,10 +128,18 @@ class CodebaseAnalyzer:
             findings.append(Finding(
                 "inspection",
                 "INFO",
+                "",
                 "No configured heuristic matched the inspected source.",
                 "Review the raw inventory and add domain-specific analyzers as the engine grows.",
             ))
         return findings
+
+    @staticmethod
+    def _first_matching_file(sources: dict[str, str], markers: tuple[str, ...]) -> str:
+        for path, text in sources.items():
+            if any(marker in text for marker in markers):
+                return path
+        return "not specified"
 
 
 def prioritize_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
