@@ -77,6 +77,12 @@ class CommandExecutorTests(unittest.TestCase):
             self.assertTrue(result.timed_out)
             self.assertEqual(budget.failures, 1)
 
+    def test_git_is_not_allowlisted_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            executor, _ = self._executor(tmp)
+            with self.assertRaises(PermissionError):
+                executor.run(["git", "push"], reason="test", evidence="denial")
+
     def test_emergency_stop_blocks_command(self):
         with tempfile.TemporaryDirectory() as tmp:
             executor, guard = self._executor(tmp, allowed_commands={"python"})
