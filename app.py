@@ -143,16 +143,26 @@ class RoosterEngineerApp:
                 analysis = result.get("analysis", {})
                 files_read = analysis.get("files_read", [])
                 findings = analysis.get("findings", [])
+                self.log("=" * 64)
+                self.log("ROOSTER ENGINEERING REPORT")
+                self.log(f"STATUS: {task.status.upper()}")
+                self.log("=" * 64)
                 self.log(f"[ANALYSIS] Local analyzer read {len(files_read)} source files.")
                 for path in files_read:
                     self.log(f"  [READ] {path}")
-                for finding in findings:
-                    self.log(
-                        f"[FINDING] {finding.get('priority', 'INFO')} — "
-                        f"{finding.get('area', 'inspection')}"
-                    )
-                    self.log(f"  Evidence: {finding.get('evidence', '')}")
-                    self.log(f"  Recommendation: {finding.get('recommendation', '')}")
+                if findings:
+                    self.log(f"FINDINGS: {len(findings)}")
+                    for index, finding in enumerate(findings, 1):
+                        priority = finding.get("priority", "INFO")
+                        area = finding.get("area", "inspection")
+                        evidence = finding.get("evidence", "")
+                        recommendation = finding.get("recommendation", "")
+                        self.log(f"FINDING {index}: {priority} — {area}")
+                        self.log(f"  File: {finding.get('file', finding.get('path', 'not specified'))}")
+                        self.log(f"  Evidence: {evidence}")
+                        self.log(f"  Recommendation: {recommendation}")
+                else:
+                    self.log("FINDINGS: none returned by the local analyzer.")
                 verification = result.get("verification", {})
                 observation = verification.get("observation", {})
                 checkpoint = verification.get("checkpoint", {})
