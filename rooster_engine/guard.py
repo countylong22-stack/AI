@@ -201,6 +201,9 @@ class RoosterGuard:
                 f"Risk mismatch for {action.tool}: policy={policy.risk.value}"
             )
 
+        if action.tool == "write_file" and action.target:
+            self.enforce_write_target(action.target)
+
         action_id = self.action_id(action)
         if policy.approval_required:
             with self._lock:
