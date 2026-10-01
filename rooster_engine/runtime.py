@@ -9,6 +9,8 @@ class RuntimeLimits:
     max_steps: int = 10
     max_failures: int = 3
     max_duration_seconds: float = 60.0
+    max_output_chars: int = 20000
+    max_write_bytes: int = 1_000_000
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -17,6 +19,10 @@ class RuntimeLimits:
             raise ValueError("max_failures must be non-negative")
         if self.max_duration_seconds <= 0:
             raise ValueError("max_duration_seconds must be positive")
+        if self.max_output_chars < 1:
+            raise ValueError("max_output_chars must be positive")
+        if self.max_write_bytes < 1:
+            raise ValueError("max_write_bytes must be positive")
 
 
 class RuntimeBudget:
@@ -27,6 +33,8 @@ class RuntimeBudget:
         self.started = monotonic()
         self.steps = 0
         self.failures = 0
+        self.output_chars = 0
+        self.write_bytes = 0
 
     def check(self) -> None:
         if self.steps >= self.limits.max_steps:
@@ -42,3 +50,17 @@ class RuntimeBudget:
 
     def record_failure(self) -> None:
         self.failures += 1
+
+    def record_output(self, chars: int) -> None:
+        if chars < 0:
+            raise ValueError("chars must be non-negative")
+        self.output_chars += chars
+        if self.output_chars > self.limits.max_output_chars:
+            raise RuntimeError("Rooster runtime output budget reached.")
+
+    def record_write(self, size_bytes: int) -> None:
+        if size_bytes < 0:
+            raise ValueError("size_bytes must be non-negative")
+        self.write_bytes += size_bytes
+        if self.write_bytes > self.limits.max_write_bytes:
+            raise RuntimeError("Rooster runtime write budget reached.")
