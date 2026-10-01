@@ -55,8 +55,10 @@ class CodebaseAnalyzer:
         }
 
     def _findings(self, sources: dict[str, str]) -> list[Finding]:
-        joined = "\n".join(
-            f"--- {name} ---\n{text}" for name, text in sources.items()
+        joined = "
+".join(
+            f"--- {name} ---
+{text}" for name, text in sources.items()
         )
         findings: list[Finding] = []
 
@@ -77,43 +79,46 @@ class CodebaseAnalyzer:
                 "Add an explicit protected-path policy for guard, approval, emergency-stop, policy, and CI security files.",
             ))
 
-        if 'DEFAULT_ALLOWED = frozenset({"python"})' in joined or "shell=False" in joined:
+        command_source = sources.get("rooster_engine/command.py", "")
+        if command_source and (
+            "DEFAULT_ALLOWED" not in command_source
+            or "shell=False" not in command_source
+            or "_validate_arguments" not in command_source
+            or "allow_general_python: bool = False" not in command_source
+        ):
             findings.append(Finding(
                 "command execution",
                 "MEDIUM",
-                self._preferred_file(
-                    sources,
-                    "rooster_engine/command.py",
-                    ("DEFAULT_ALLOWED", "shell=False"),
-                ),
-                "Command execution uses an executable allowlist and shell=False, but Python remains a general-purpose execution capability.",
-                "Add argument-level restrictions and explicit per-command policies with bounded runtime and output.",
+                "rooster_engine/command.py",
+                "Command execution is missing one or more explicit controls: executable allowlisting, shell=False, argument-level validation, or a default-deny general Python mode.",
+                "Keep executable and argument policies explicit, require approval, and preserve bounded runtime/output.",
             ))
 
-        if "Permission.NETWORK" not in joined:
+        guard_source = sources.get("rooster_engine/guard.py", "")
+        if "git_push" in guard_source and "Permission.NETWORK" not in guard_source:
             findings.append(Finding(
                 "network access",
                 "HIGH",
-                self._preferred_file(
-                    sources,
-                    "rooster_engine/guard.py",
-                    ("Permission.NETWORK", "NETWORK"),
-                ),
-                "No dedicated network execution capability or host allowlist was found in the inspected implementation.",
-                "Keep network access denied by default and add an explicit bounded host-allowlisted capability when needed.",
+                "rooster_engine/guard.py",
+                "A network-capable git_push policy exists without an explicit network permission classification.",
+                "Keep network access explicitly classified, approval-gated, and host-allowlisted before enabling it.",
             ))
 
-        if "max_steps" in joined and "max_duration_seconds" in joined:
+        runtime_source = sources.get("rooster_engine/runtime.py", "")
+        command_source = sources.get("rooster_engine/command.py", "")
+        missing_runtime_controls = [
+            name for name in ("max_output_chars", "max_write_bytes")
+            if name not in runtime_source
+        ]
+        if "timeout_seconds" not in command_source:
+            missing_runtime_controls.append("subprocess timeout")
+        if missing_runtime_controls:
             findings.append(Finding(
                 "runtime limits",
                 "MEDIUM",
-                self._preferred_file(
-                    sources,
-                    "rooster_engine/runtime.py",
-                    ("max_steps", "max_duration_seconds"),
-                ),
-                "Runtime limits exist for steps, failures, and duration, but no write, byte, or network budgets are exposed.",
-                "Add resource budgets for writes, subprocess output/duration, and future network requests.",
+                "rooster_engine/runtime.py",
+                "Runtime resource controls are missing: " + ", ".join(missing_runtime_controls) + ".",
+                "Add bounded resource budgets for each missing control and expose evidence when a budget is consumed.",
             ))
 
         verification = sources.get("rooster_engine/verification.py", "")
