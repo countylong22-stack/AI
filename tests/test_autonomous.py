@@ -32,13 +32,13 @@ class FakeResponsesClient(FakeClient):
     def create(self, **kwargs):
         self.calls += 1
         prompt = kwargs["input"]
-        if "Return ONLY JSON" in prompt and '"read_paths"' in prompt:
-            return self._response({"read_paths": ["sample.txt"], "approach": "update sample"})
         if '"patches"' in prompt:
             return self._response({
                 "patches": [{"path": "sample.txt", "content": "updated\n"}],
                 "intent": "update sample",
             })
+        if '"read_paths"' in prompt:
+            return self._response({"read_paths": ["sample.txt"], "approach": "update sample"})
         return self._response({"summary": "done"})
 
 
