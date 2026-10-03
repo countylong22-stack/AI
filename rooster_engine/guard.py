@@ -124,6 +124,7 @@ class RoosterGuard:
             "write_file": ToolPolicy(Permission.WRITE, Risk.MEDIUM, True),
             "write_project_file": ToolPolicy(Permission.WRITE, Risk.MEDIUM, True),
             "run_tests": ToolPolicy(Permission.EXECUTE, Risk.MEDIUM, True),
+            "create_media_project": ToolPolicy(Permission.NETWORK, Risk.MEDIUM, True),
             "run_command": ToolPolicy(Permission.EXECUTE, Risk.MEDIUM, True),
             "git_commit": ToolPolicy(Permission.WRITE, Risk.HIGH, True),
             "git_push": ToolPolicy(Permission.NETWORK, Risk.CRITICAL, True),
