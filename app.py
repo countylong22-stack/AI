@@ -9,6 +9,7 @@ from datetime import datetime
 
 from rooster_engine import AutonomousEngineer
 from rooster_engine.video_studio import VideoStudio, VideoStudioError
+from rooster_engine.video_renderer import VideoRenderer, VideoRendererError
 from rooster_engine.interaction import parse_chat_action
 from uuid import uuid4
 
@@ -19,7 +20,7 @@ DATA_FILE = Path.home() / ".rooster_autonomous_engineer.json"
 class RoosterEngineerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title(APP_NAME + " v2.2")
+        self.root.title(APP_NAME + " v2.3")
         self.root.geometry("1180x800")
         self.root.minsize(900, 620)
         self.workspace = Path.cwd()
@@ -48,7 +49,7 @@ class RoosterEngineerApp:
     def build_ui(self):
         top = ttk.Frame(self.root, padding=10)
         top.pack(fill="x")
-        ttk.Label(top, text=APP_NAME + " v2.2", font=("Segoe UI", 18, "bold")).pack(side="left")
+        ttk.Label(top, text=APP_NAME + " v2.3", font=("Segoe UI", 18, "bold")).pack(side="left")
         ttk.Button(top, text="EMERGENCY STOP", command=self.emergency_stop).pack(side="right", padx=(6, 0))
         ttk.Button(top, text="Reset Stop", command=self.reset_stop).pack(side="right", padx=6)
         ttk.Button(top, text="Choose Workspace", command=self.choose_workspace).pack(side="right")
@@ -263,84 +264,63 @@ class RoosterEngineerApp:
         self.chat_log("ROOSTER", "Rejected. Nothing was executed.")
 
     def make_video(self):
-        """Create an AI-video production plan from the current objective."""
+        """Run the complete AI video pipeline from one button."""
         idea = self.task_entry.get("1.0", tk.END).strip() or self.chat_entry.get("1.0", tk.END).strip()
         if not idea:
             messagebox.showwarning("Rooster Video Studio", "Enter a video idea first.")
             return
 
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Rooster Video Studio")
-        dialog.geometry("560x400")
-        dialog.transient(self.root)
+        renderer = VideoRenderer()
+        if not renderer.configured:
+            messagebox.showerror(
+                "Rooster Video Studio",
+                "No video renderer is connected.\n\n"
+                "Connect a renderer with ROOSTER_RENDERER_URL or "
+                "ROOSTER_RENDER_COMMAND, then press MAKE VIDEO again.",
+            )
+            self.log("VIDEO: no renderer connected; nothing was charged or rendered.")
+            return
 
-        ttk.Label(dialog, text="MAKE VIDEO", font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=14, pady=(14, 6))
-        ttk.Label(dialog, text="OpenAI will create scene prompts, voiceover, sound design, and edit notes.", wraplength=520).pack(anchor="w", padx=14)
+        self.log(f"VIDEO: renderer detected — {renderer.status()}")
+        self.log("VIDEO: MAKE VIDEO pipeline started.")
 
-        form = ttk.Frame(dialog, padding=14)
-        form.pack(fill="x")
-        ttk.Label(form, text="Video idea").pack(anchor="w")
-        idea_box = scrolledtext.ScrolledText(form, height=7, wrap="word")
-        idea_box.pack(fill="x", pady=(4, 10))
-        idea_box.insert("1.0", idea)
-
-        options = ttk.Frame(form)
-        options.pack(fill="x")
-        ttk.Label(options, text="Seconds:").pack(side="left")
-        seconds_var = tk.StringVar(value="120")
-        ttk.Entry(options, textvariable=seconds_var, width=8).pack(side="left", padx=(6, 16))
-        ttk.Label(options, text="Format:").pack(side="left")
-        format_var = tk.StringVar(value="vertical")
-        ttk.Combobox(options, textvariable=format_var, values=("vertical", "landscape", "square"), state="readonly", width=12).pack(side="left", padx=6)
-
-        status_var = tk.StringVar(value="Ready")
-        ttk.Label(dialog, textvariable=status_var, wraplength=520).pack(anchor="w", padx=14, pady=8)
-
-        buttons = ttk.Frame(dialog, padding=14)
-        buttons.pack(fill="x", side="bottom")
-        ttk.Button(buttons, text="Close", command=dialog.destroy).pack(side="right")
-        generate_button = ttk.Button(buttons, text="GENERATE VIDEO PLAN")
-        generate_button.pack(side="right", padx=6)
-
-        def generate():
+        def worker():
             try:
-                total_seconds = int(seconds_var.get())
-                video_format = format_var.get()
-                video_idea = idea_box.get("1.0", tk.END).strip()
-                if not video_idea:
-                    raise VideoStudioError("Video idea cannot be empty.")
-                generate_button.configure(state="disabled")
-                status_var.set("Rooster is creating your video plan...")
-                self.log(f"VIDEO REQUEST: {video_idea}")
+                total_seconds = 120
+                video_format = "vertical"
+                self.log("VIDEO: creating 2-minute production plan with Rooster/OpenAI...")
+                plan = VideoStudio().plan(idea, total_seconds=total_seconds, format=video_format)
+                project_dir = self.workspace / "video_projects" / "rooster_video"
+                project_dir.mkdir(parents=True, exist_ok=True)
+                VideoStudio.save(plan, project_dir / "plan.json")
 
-                def worker():
-                    try:
-                        plan = VideoStudio().plan(video_idea, total_seconds=total_seconds, format=video_format)
-                        output = self.workspace / "video_projects" / "rooster_video_plan.json"
-                        VideoStudio.save(plan, output)
-                        self.root.after(0, lambda: done(plan, output))
-                    except Exception as exc:
-                        self.root.after(0, lambda: failed(exc))
+                clips = []
+                for index, scene in enumerate(plan["scenes"], 1):
+                    if self.engine.emergency_stop_active:
+                        raise VideoRendererError("Rooster Emergency Stop is active.")
+                    clip = project_dir / f"scene_{index:02d}.mp4"
+                    self.log(f"VIDEO: rendering scene {index}/{len(plan['scenes'])}...")
+                    renderer.render_scene(
+                        scene, clip, format=video_format,
+                        master_visual_lock=plan.get("master_visual_lock", ""),
+                        log=self.log,
+                    )
+                    clips.append(clip)
 
-                def done(plan, output):
-                    generate_button.configure(state="normal")
-                    status_var.set(f"Created: {output}")
-                    self.log(f"VIDEO PLAN CREATED: {output}")
-                    self.log(f"TITLE: {plan.get('title', 'Untitled')}")
-                    self.log(f"SCENES: {len(plan.get('scenes', []))}")
-                    messagebox.showinfo("Rooster Video Studio", f"Video plan created successfully.\n\nSaved to:\n{output}", parent=dialog)
-
-                def failed(exc):
-                    generate_button.configure(state="normal")
-                    status_var.set(f"Failed: {exc}")
-                    self.log(f"VIDEO STUDIO FAILED: {exc}")
-                    messagebox.showerror("Rooster Video Studio", str(exc), parent=dialog)
-
-                threading.Thread(target=worker, daemon=True).start()
+                final = project_dir / "rooster_2min.mp4"
+                renderer.assemble(clips, final, log=self.log)
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Rooster Video Studio",
+                    f"2-minute video complete.\n\n{final}",
+                    parent=self.root,
+                ))
             except Exception as exc:
-                status_var.set(str(exc))
+                self.log(f"VIDEO PIPELINE FAILED: {exc}")
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Rooster Video Studio", str(exc), parent=self.root
+                ))
 
-        generate_button.configure(command=generate)
+        threading.Thread(target=worker, daemon=True).start()
 
     def choose_workspace(self):
         folder = filedialog.askdirectory(initialdir=str(self.workspace))
