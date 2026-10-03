@@ -120,10 +120,11 @@ class VideoRenderer:
             )
         output.parent.mkdir(parents=True, exist_ok=True)
         concat_file = output.with_suffix(".concat.txt")
-        concat_file.write_text(
-            "".join(f"file '{clip.resolve().as_posix().replace("'", "'\\''")}'\n" for clip in clips),
-            encoding="utf-8",
-        )
+        lines = []
+        for clip in clips:
+            safe_path = clip.resolve().as_posix().replace("'", "'\\''")
+            lines.append(f"file '{safe_path}'\\n")
+        concat_file.write_text("".join(lines), encoding="utf-8")
         cmd = [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
                "-c", "copy", str(output)]
         try:
