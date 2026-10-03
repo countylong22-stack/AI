@@ -10,6 +10,7 @@ from datetime import datetime
 from rooster_engine import AutonomousEngineer
 from rooster_engine.video_studio import VideoStudio, VideoStudioError
 from rooster_engine.video_renderer import VideoRenderer, VideoRendererError
+from rooster_engine.creative_media import CreativeStudio, CreativeStudioError
 from rooster_engine.autonomous import AutonomousCoder
 from rooster_engine.interaction import parse_chat_action
 from uuid import uuid4
@@ -55,6 +56,7 @@ class RoosterEngineerApp:
         ttk.Button(top, text="Reset Stop", command=self.reset_stop).pack(side="right", padx=6)
         ttk.Button(top, text="Choose Workspace", command=self.choose_workspace).pack(side="right")
         ttk.Button(top, text="MAKE VIDEO", command=self.make_video).pack(side="right", padx=6)
+        ttk.Button(top, text="MAKE MEDIA", command=self.make_media).pack(side="right", padx=6)
         ttk.Button(top, text="AUTONOMOUS MODE", command=self.start_autonomous_mode).pack(side="right", padx=6)
 
         main = ttk.Panedwindow(self.root, orient="horizontal")
@@ -325,6 +327,64 @@ class RoosterEngineerApp:
                 ))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def make_media(self):
+        """Create a complete project: video scenes, graphics, and commentary."""
+        idea = self.task_entry.get("1.0", tk.END).strip() or self.chat_entry.get("1.0", tk.END).strip()
+        if not idea:
+            idea = (
+                "Create an ultra-realistic Rooster Racing GT3 video featuring car #45 "
+                "with a chrome silver mirror-finish livery, intense clean racing, and an "
+                "energetic American motorsport commentary style."
+            )
+            self.task_entry.insert("1.0", idea)
+        if self.action_running:
+            messagebox.showwarning("Rooster Creative Studio", "Another guarded action is already running.")
+            return
+
+        self.action_running = True
+        self.send_button.configure(state="disabled")
+        self.log("MEDIA: full creative pipeline started — video + graphics + commentary.")
+
+        def worker():
+            try:
+                self.engine.guard.emergency_stop.check()
+                task_id = f"media-{uuid4().hex[:12]}"
+                action = self.engine.guard.action_id(
+                    __import__("rooster_engine").Action(
+                        "create_media_project",
+                        "User requested a complete AI media project.",
+                        "Plan and render video, graphics, and commentary.",
+                        "Project files, rendered assets, and final MP4.",
+                        __import__("rooster_engine").Risk.MEDIUM,
+                        "video_projects/rooster_media",
+                    )
+                )
+                self.engine.guard.approve(action, actor="human", task_id=task_id)
+                result = self.engine.tools.run(
+                    "create_media_project",
+                    idea,
+                    reason="User requested a complete AI media project.",
+                    action="Plan and render video, graphics, and commentary.",
+                    evidence="Project files, rendered assets, and final MP4.",
+                    risk=__import__("rooster_engine").Risk.MEDIUM,
+                    target="video_projects/rooster_media",
+                    actor="human",
+                    task_id=task_id,
+                )
+                self.log(f"MEDIA COMPLETE: {result}")
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Rooster Creative Studio",
+                    f"Media project complete.\n\n{result}",
+                    parent=self.root,
+                ))
+            except Exception as exc:
+                self.log(f"MEDIA PIPELINE FAILED: {exc}")
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Rooster Creative Studio", str(exc), parent=self.root
+                ))
+            finally:
+                self.root.after(0, self._finish_autonomous_mode)
 
     def start_autonomous_mode(self):
         """Let Rooster independently execute a bounded engineering loop."""
