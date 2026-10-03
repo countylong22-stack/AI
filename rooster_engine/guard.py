@@ -122,6 +122,7 @@ class RoosterGuard:
             "git_status": ToolPolicy(Permission.READ, Risk.LOW),
             "checkpoint": ToolPolicy(Permission.READ, Risk.LOW),
             "write_file": ToolPolicy(Permission.WRITE, Risk.MEDIUM, True),
+            "write_project_file": ToolPolicy(Permission.WRITE, Risk.MEDIUM, True),
             "run_tests": ToolPolicy(Permission.EXECUTE, Risk.MEDIUM, True),
             "run_command": ToolPolicy(Permission.EXECUTE, Risk.MEDIUM, True),
             "git_commit": ToolPolicy(Permission.WRITE, Risk.HIGH, True),
@@ -201,7 +202,7 @@ class RoosterGuard:
                 f"Risk mismatch for {action.tool}: policy={policy.risk.value}"
             )
 
-        if action.tool == "write_file" and action.target:
+        if action.tool in {"write_file", "write_project_file"} and action.target:
             self.enforce_write_target(action.target)
 
         action_id = self.action_id(action)
