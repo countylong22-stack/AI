@@ -7,7 +7,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from datetime import datetime
 
-from rooster_engine import AutonomousEngineer
+from rooster_engine import AutonomousEngineer, Action, Risk
 from rooster_engine.video_studio import VideoStudio, VideoStudioError
 from rooster_engine.video_renderer import VideoRenderer, VideoRendererError
 from rooster_engine.creative_media import CreativeStudio, CreativeStudioError
@@ -351,12 +351,12 @@ class RoosterEngineerApp:
                 self.engine.guard.emergency_stop.check()
                 task_id = f"media-{uuid4().hex[:12]}"
                 action = self.engine.guard.action_id(
-                    __import__("rooster_engine").Action(
+                    Action(
                         "create_media_project",
                         "User requested a complete AI media project.",
                         "Plan and render video, graphics, and commentary.",
                         "Project files, rendered assets, and final MP4.",
-                        __import__("rooster_engine").Risk.MEDIUM,
+                        Risk.MEDIUM,
                         "video_projects/rooster_media",
                     )
                 )
