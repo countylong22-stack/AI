@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 from datetime import datetime
 
 from rooster_engine import AutonomousEngineer
+from rooster_engine.video_studio import VideoStudio, VideoStudioError
 from rooster_engine.interaction import parse_chat_action
 from uuid import uuid4
 
@@ -51,6 +52,7 @@ class RoosterEngineerApp:
         ttk.Button(top, text="EMERGENCY STOP", command=self.emergency_stop).pack(side="right", padx=(6, 0))
         ttk.Button(top, text="Reset Stop", command=self.reset_stop).pack(side="right", padx=6)
         ttk.Button(top, text="Choose Workspace", command=self.choose_workspace).pack(side="right")
+        ttk.Button(top, text="MAKE VIDEO", command=self.make_video).pack(side="right", padx=6)
 
         main = ttk.Panedwindow(self.root, orient="horizontal")
         main.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -259,6 +261,86 @@ class RoosterEngineerApp:
         self.set_action_status("REJECTED", action_id)
         self.chat_log("YOU", f"REJECTED action {action_id}")
         self.chat_log("ROOSTER", "Rejected. Nothing was executed.")
+
+    def make_video(self):
+        """Create an AI-video production plan from the current objective."""
+        idea = self.task_entry.get("1.0", tk.END).strip() or self.chat_entry.get("1.0", tk.END).strip()
+        if not idea:
+            messagebox.showwarning("Rooster Video Studio", "Enter a video idea first.")
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Rooster Video Studio")
+        dialog.geometry("560x400")
+        dialog.transient(self.root)
+
+        ttk.Label(dialog, text="MAKE VIDEO", font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=14, pady=(14, 6))
+        ttk.Label(dialog, text="OpenAI will create scene prompts, voiceover, sound design, and edit notes.", wraplength=520).pack(anchor="w", padx=14)
+
+        form = ttk.Frame(dialog, padding=14)
+        form.pack(fill="x")
+        ttk.Label(form, text="Video idea").pack(anchor="w")
+        idea_box = scrolledtext.ScrolledText(form, height=7, wrap="word")
+        idea_box.pack(fill="x", pady=(4, 10))
+        idea_box.insert("1.0", idea)
+
+        options = ttk.Frame(form)
+        options.pack(fill="x")
+        ttk.Label(options, text="Seconds:").pack(side="left")
+        seconds_var = tk.StringVar(value="120")
+        ttk.Entry(options, textvariable=seconds_var, width=8).pack(side="left", padx=(6, 16))
+        ttk.Label(options, text="Format:").pack(side="left")
+        format_var = tk.StringVar(value="vertical")
+        ttk.Combobox(options, textvariable=format_var, values=("vertical", "landscape", "square"), state="readonly", width=12).pack(side="left", padx=6)
+
+        status_var = tk.StringVar(value="Ready")
+        ttk.Label(dialog, textvariable=status_var, wraplength=520).pack(anchor="w", padx=14, pady=8)
+
+        buttons = ttk.Frame(dialog, padding=14)
+        buttons.pack(fill="x", side="bottom")
+        ttk.Button(buttons, text="Close", command=dialog.destroy).pack(side="right")
+        generate_button = ttk.Button(buttons, text="GENERATE VIDEO PLAN")
+        generate_button.pack(side="right", padx=6)
+
+        def generate():
+            try:
+                total_seconds = int(seconds_var.get())
+                video_format = format_var.get()
+                video_idea = idea_box.get("1.0", tk.END).strip()
+                if not video_idea:
+                    raise VideoStudioError("Video idea cannot be empty.")
+                generate_button.configure(state="disabled")
+                status_var.set("Rooster is creating your video plan...")
+                self.log(f"VIDEO REQUEST: {video_idea}")
+
+                def worker():
+                    try:
+                        plan = VideoStudio().plan(video_idea, total_seconds=total_seconds, format=video_format)
+                        output = self.workspace / "video_projects" / "rooster_video_plan.json"
+                        VideoStudio.save(plan, output)
+                        self.root.after(0, lambda: done(plan, output))
+                    except Exception as exc:
+                        self.root.after(0, lambda: failed(exc))
+
+                def done(plan, output):
+                    generate_button.configure(state="normal")
+                    status_var.set(f"Created: {output}")
+                    self.log(f"VIDEO PLAN CREATED: {output}")
+                    self.log(f"TITLE: {plan.get('title', 'Untitled')}")
+                    self.log(f"SCENES: {len(plan.get('scenes', []))}")
+                    messagebox.showinfo("Rooster Video Studio", f"Video plan created successfully.\n\nSaved to:\n{output}", parent=dialog)
+
+                def failed(exc):
+                    generate_button.configure(state="normal")
+                    status_var.set(f"Failed: {exc}")
+                    self.log(f"VIDEO STUDIO FAILED: {exc}")
+                    messagebox.showerror("Rooster Video Studio", str(exc), parent=dialog)
+
+                threading.Thread(target=worker, daemon=True).start()
+            except Exception as exc:
+                status_var.set(str(exc))
+
+        generate_button.configure(command=generate)
 
     def choose_workspace(self):
         folder = filedialog.askdirectory(initialdir=str(self.workspace))
