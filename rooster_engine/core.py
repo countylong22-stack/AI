@@ -13,6 +13,7 @@ from .guard import Action, Risk, RoosterGuard
 from .runtime import RuntimeBudget, RuntimeLimits
 from .verification import VerificationEngine
 from .analysis import CodebaseAnalyzer, prioritize_findings
+from .creative_media import CreativeStudio
 
 
 @dataclass
@@ -216,6 +217,28 @@ class AutonomousEngineer:
             "run_tests",
             lambda: self.verifier.run_test_suite(self.workspace.root, self.guard),
         )
+        self.tools.register("create_media_project", self.create_media_project)
+
+    def create_media_project(self, idea: str, output_dir: str = "video_projects/rooster_media", total_seconds: int = 120, format: str = "vertical") -> str:
+        """Plan and render a complete video + graphics + commentary project."""
+        if not idea.strip():
+            raise ValueError("Media objective cannot be empty.")
+        target = self.workspace._workspace_path(output_dir)
+        studio = CreativeStudio()
+        final = studio.create_project(
+            idea,
+            target,
+            total_seconds=total_seconds,
+            format=format,
+        )
+        self.guard.audit.write(
+            "media_project_created",
+            objective=idea,
+            output=str(final),
+            format=format,
+            total_seconds=total_seconds,
+        )
+        return str(final)
 
     def write_file(self, relative_path: str, content: str) -> str:
         """Write only to the guarded sandbox and enforce protected-path policy."""
