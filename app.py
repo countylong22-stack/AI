@@ -10,6 +10,7 @@ from datetime import datetime
 from rooster_engine import AutonomousEngineer
 from rooster_engine.video_studio import VideoStudio, VideoStudioError
 from rooster_engine.video_renderer import VideoRenderer, VideoRendererError
+from rooster_engine.autonomous import AutonomousCoder
 from rooster_engine.interaction import parse_chat_action
 from uuid import uuid4
 
@@ -54,6 +55,7 @@ class RoosterEngineerApp:
         ttk.Button(top, text="Reset Stop", command=self.reset_stop).pack(side="right", padx=6)
         ttk.Button(top, text="Choose Workspace", command=self.choose_workspace).pack(side="right")
         ttk.Button(top, text="MAKE VIDEO", command=self.make_video).pack(side="right", padx=6)
+        ttk.Button(top, text="AUTONOMOUS MODE", command=self.start_autonomous_mode).pack(side="right", padx=6)
 
         main = ttk.Panedwindow(self.root, orient="horizontal")
         main.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -324,6 +326,42 @@ class RoosterEngineerApp:
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def start_autonomous_mode(self):
+        """Let Rooster independently execute a bounded engineering loop."""
+        objective = self.task_entry.get("1.0", tk.END).strip() or self.chat_entry.get("1.0", tk.END).strip()
+        if not objective:
+            messagebox.showwarning("Rooster Autonomous Mode", "Enter an engineering objective first.")
+            return
+        if self.action_running:
+            messagebox.showwarning("Rooster Autonomous Mode", "Another guarded action is already running.")
+            return
+        self.action_running = True
+        self.send_button.configure(state="disabled")
+        self.log("AUTONOMOUS: bounded self-directed engineering mode started.")
+        self.log("AUTONOMOUS: read -> reason -> checkpoint -> write -> test -> verify.")
+
+        def worker():
+            try:
+                task_id = f"auto-{uuid4().hex[:12]}"
+                self.engine.create_checkpoint("autonomous_pre_change")
+                coder = AutonomousCoder(self.engine)
+                result = coder.run(objective, task_id=task_id)
+                self.log(f"AUTONOMOUS STATUS: {result.status}")
+                self.log(f"AUTONOMOUS ITERATIONS: {result.iterations}")
+                self.log(f"AUTONOMOUS SUMMARY: {result.summary}")
+                for item in result.evidence:
+                    self.log(f"AUTONOMOUS EVIDENCE: {json.dumps(item, default=str)[:3000]}")
+            except Exception as exc:
+                self.log(f"AUTONOMOUS FAILED: {exc}")
+            finally:
+                self.root.after(0, self._finish_autonomous_mode)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_autonomous_mode(self):
+        self.action_running = False
+        self.send_button.configure(state="normal")
+        self.refresh_tasks()
     def choose_workspace(self):
         folder = filedialog.askdirectory(initialdir=str(self.workspace))
         if folder:
