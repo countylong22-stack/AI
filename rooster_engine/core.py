@@ -210,6 +210,7 @@ class AutonomousEngineer:
         self.tools.register("git_status", self.workspace.git_status)
         self.tools.register("read_file", self.workspace.read_text)
         self.tools.register("write_file", self.write_file)
+        self.tools.register("write_project_file", self.write_project_file)
         self.tools.register("checkpoint", self.workspace.checkpoint)
         self.tools.register(
             "run_tests",
@@ -220,6 +221,19 @@ class AutonomousEngineer:
         """Write only to the guarded sandbox and enforce protected-path policy."""
         self.guard.enforce_write_target(relative_path)
         return self.workspace.write_sandbox(relative_path, content)
+
+    def write_project_file(self, relative_path: str, content: str) -> str:
+        """Write a non-protected project file after RoosterGuard authorization."""
+        self.guard.enforce_write_target(relative_path)
+        path = self.workspace._workspace_path(relative_path)
+        if path == self.workspace.root or path.is_dir():
+            raise ValueError("Project write target must be a file path.")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_name("." + path.name + ".rooster-" + str(os.getpid()))
+        temp.write_text(content, encoding="utf-8")
+        os.replace(temp, path)
+        self.guard.audit.write("project_file_written", target=relative_path, chars=len(content))
+        return str(path)
 
     def plan(self, objective: str) -> list[str]:
         return [
