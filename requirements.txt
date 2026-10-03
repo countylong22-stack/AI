@@ -1,1 +1,2 @@
-# Rooster Autonomous Engineer v1 uses Python standard library only.
+# Rooster Autonomous Engineer v2
+openai>=1.0.0
