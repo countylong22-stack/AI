@@ -5,6 +5,7 @@ from pathlib import Path
 
 from rooster_engine.autonomous import AutonomousCoder
 from rooster_engine.core import AutonomousEngineer
+from rooster_engine.guard import Action, Risk
 
 
 class FakeResponse:
@@ -62,14 +63,7 @@ class AutonomousCoderTests(unittest.TestCase):
             root = Path(tmp)
             engineer = AutonomousEngineer(root, root / "tasks.json")
             action = engineer.guard.action_id(
-                __import__("rooster_engine.guard", fromlist=["Action"]).Action(
-                    "write_project_file",
-                    "test",
-                    "write protected",
-                    "denied",
-                    __import__("rooster_engine.guard", fromlist=["Risk"]).Risk.MEDIUM,
-                    "rooster_engine/guard.py",
-                )
+                Action("write_project_file", "test", "write protected", "denied", Risk.MEDIUM, "rooster_engine/guard.py")
             )
             engineer.guard.approve(action, actor="autonomous", task_id="test-task")
             with self.assertRaises(PermissionError):
@@ -80,7 +74,7 @@ class AutonomousCoderTests(unittest.TestCase):
                     reason="test",
                     action="write protected",
                     evidence="denied",
-                    risk=__import__("rooster_engine.guard", fromlist=["Risk"]).Risk.MEDIUM,
+                    risk=Risk.MEDIUM,
                     target="rooster_engine/guard.py",
                     actor="autonomous",
                     task_id="test-task",
