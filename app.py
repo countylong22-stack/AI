@@ -296,8 +296,10 @@ class RoosterEngineerApp:
 
                 clips = []
                 for index, scene in enumerate(plan["scenes"], 1):
-                    if self.engine.emergency_stop_active:
-                        raise VideoRendererError("Rooster Emergency Stop is active.")
+                    try:
+                        self.engine.guard.emergency_stop.check()
+                    except Exception as exc:
+                        raise VideoRendererError("Rooster Emergency Stop is active.") from exc
                     clip = project_dir / f"scene_{index:02d}.mp4"
                     self.log(f"VIDEO: rendering scene {index}/{len(plan['scenes'])}...")
                     renderer.render_scene(
