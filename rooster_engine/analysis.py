@@ -55,10 +55,8 @@ class CodebaseAnalyzer:
         }
 
     def _findings(self, sources: dict[str, str]) -> list[Finding]:
-        joined = "
-".join(
-            f"--- {name} ---
-{text}" for name, text in sources.items()
+        joined = "\n".join(
+            f"--- {name} ---\n{text}" for name, text in sources.items()
         )
         findings: list[Finding] = []
 
