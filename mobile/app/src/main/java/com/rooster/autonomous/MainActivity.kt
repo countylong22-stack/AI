@@ -1,5 +1,6 @@
 package com.rooster.autonomous
 
+import android.app.Activity
 import android.graphics.Typeface
 import android.os.Bundle
 import android.widget.Button
@@ -8,12 +9,11 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private lateinit var server: EditText
     private lateinit var token: EditText
@@ -30,13 +30,11 @@ class MainActivity : AppCompatActivity() {
         val scroll = ScrollView(this).apply { addView(root) }
         setContentView(scroll)
 
-        val titleView = TextView(this).apply {
-            text = "🐓 Rooster Autonomous Engineer"
+        root.addView(TextView(this).apply {
+            text = "Rooster Autonomous Engineer"
             textSize = 24f
             typeface = Typeface.DEFAULT_BOLD
-        }
-        root.addView(titleView)
-
+        })
         root.addView(TextView(this).apply {
             text = "Mobile companion • connect to your Rooster computer"
             textSize = 15f
@@ -54,20 +52,21 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(token)
 
-        val connect = Button(this).apply { text = "CONNECT / STATUS" }
-        root.addView(connect)
-        connect.setOnClickListener { request("GET", "/status") }
-
-        val stop = Button(this).apply { text = "EMERGENCY STOP" }
-        root.addView(stop)
-        stop.setOnClickListener { request("POST", "/stop") }
-
-        val reset = Button(this).apply { text = "RESET STOP" }
-        root.addView(reset)
-        reset.setOnClickListener { request("POST", "/reset") }
+        root.addView(Button(this).apply {
+            text = "CONNECT / STATUS"
+            setOnClickListener { request("GET", "/status") }
+        })
+        root.addView(Button(this).apply {
+            text = "EMERGENCY STOP"
+            setOnClickListener { request("POST", "/stop") }
+        })
+        root.addView(Button(this).apply {
+            text = "RESET STOP"
+            setOnClickListener { request("POST", "/reset") }
+        })
 
         root.addView(TextView(this).apply {
-            text = "\nSafety note: this companion exposes only connection/status and the emergency-stop controls. Engineering actions remain on the Rooster computer and stay behind RoosterGuard."
+            text = "\nSafety note: this companion exposes only connection/status and emergency-stop controls. Engineering actions remain on the Rooster computer and stay behind RoosterGuard."
             textSize = 14f
         })
 
