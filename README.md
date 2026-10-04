@@ -71,3 +71,5 @@ Then enter the computer's LAN address and the same token in the Android app. Kee
 ## Download the Windows app from GitHub Actions
 
 Every push to `v2/rooster-guard` also runs the Windows app build. When the build succeeds, open the workflow run in GitHub and download the artifact named **Rooster-Autonomous-Engineer-Windows**. It contains the standalone Windows EXE, so Python is not required on the target PC.
+
+Android CI note: the APK workflow uses the runner's Android SDK directly and installs only the stable platform/build-tools needed for this project.
