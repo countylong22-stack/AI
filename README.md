@@ -14,6 +14,7 @@ Rooster v2 is a guarded autonomous engineering workspace for Windows and Python.
 - **Reason → Action → Evidence** — each task records why it is being done, what will be done, and what evidence should prove success.
 - **Persistent task memory** — task state survives application restarts with atomic replacement.
 - **Desktop GUI** — live activity, task history, checkpoint control, and emergency-stop controls.
+- **Windows app build** — GitHub Actions automatically builds a standalone `Rooster Autonomous Engineer.exe` for Windows.
 
 ## Safety boundary
 
@@ -21,7 +22,7 @@ Rooster v2 does not silently grant itself network access, Git pushes, destructiv
 
 See `SECURITY.md` for the security boundary and future command/network requirements.
 
-## Run
+## Run from Python
 
 ```powershell
 python app.py
@@ -33,10 +34,18 @@ python app.py
 python -m unittest discover -s tests -v
 ```
 
-## Build Windows EXE
+## Build Windows EXE locally
 
 ```powershell
 .\build_windows.ps1
 ```
 
-The existing build script produces `dist\Rooster Autonomous Engineer.exe`.
+The build produces:
+
+```text
+dist\Rooster Autonomous Engineer.exe
+```
+
+## Download the Windows app from GitHub Actions
+
+Every push to `v2/rooster-guard` also runs the Windows app build. When the build succeeds, open the workflow run in GitHub and download the artifact named **Rooster-Autonomous-Engineer-Windows**. It contains the standalone Windows EXE, so Python is not required on the target PC.
