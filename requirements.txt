@@ -1,2 +1,4 @@
 # Rooster Autonomous Engineer v2
 openai>=1.0.0
+fastapi>=0.115,<1.0
+uvicorn>=0.34,<1.0
