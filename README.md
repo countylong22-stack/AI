@@ -41,11 +41,7 @@ python -m unittest discover -s tests -v
 .\build_windows.ps1
 ```
 
-The build produces:
-
-```text
-dist\Rooster Autonomous Engineer.exe
-```
+The build produces `dist\Rooster Autonomous Engineer.exe`.
 
 ## Android mobile companion
 
