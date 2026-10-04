@@ -1,0 +1,51 @@
+name: Build Rooster Windows App
+
+on:
+  push:
+    branches:
+      - v2/rooster-guard
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install --upgrade pyinstaller
+
+      - name: Build Windows EXE
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --name "Rooster Autonomous Engineer" --onefile app.py
+
+      - name: Verify EXE exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\Rooster Autonomous Engineer.exe")) {
+            throw "Rooster Autonomous Engineer.exe was not created."
+          }
+          Get-Item "dist\Rooster Autonomous Engineer.exe" | Select-Object Name, Length, FullName
+
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rooster-Autonomous-Engineer-Windows
+          path: dist/Rooster Autonomous Engineer.exe
+          if-no-files-found: error
+          retention-days: 30
