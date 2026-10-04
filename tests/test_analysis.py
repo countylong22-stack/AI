@@ -11,9 +11,7 @@ class CodebaseAnalyzerTests(unittest.TestCase):
             root = Path(tmp)
             (root / "rooster_engine").mkdir()
             (root / "rooster_engine" / "guard.py").write_text(
-                'Permission.NETWORK
-record_hash = "x"
-', encoding="utf-8"
+                'Permission.NETWORK\nrecord_hash = "x"\n', encoding="utf-8"
             )
             inventory = [{"name": "rooster_engine/guard.py", "type": "file"}]
             result = CodebaseAnalyzer(root).analyze(inventory)
@@ -28,8 +26,7 @@ record_hash = "x"
             root = Path(tmp)
             (root / "rooster_engine").mkdir()
             (root / "rooster_engine" / "command.py").write_text(
-                'DEFAULT_ALLOWED = frozenset({"python"})
-', encoding="utf-8"
+                'DEFAULT_ALLOWED = frozenset({"python"})\n', encoding="utf-8"
             )
             result = CodebaseAnalyzer(root).analyze([])
             finding = next(
@@ -61,14 +58,11 @@ timeout_seconds = 30.0
             root = Path(tmp)
             (root / "rooster_engine").mkdir()
             (root / "rooster_engine" / "runtime.py").write_text(
-                "max_output_chars = 20000
-max_write_bytes = 1000000
-",
+                "max_output_chars = 20000\nmax_write_bytes = 1000000\n",
                 encoding="utf-8",
             )
             (root / "rooster_engine" / "command.py").write_text(
-                "timeout_seconds = 30.0
-",
+                "timeout_seconds = 30.0\n",
                 encoding="utf-8",
             )
             result = CodebaseAnalyzer(root).analyze([])
