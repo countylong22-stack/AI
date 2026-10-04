@@ -15,6 +15,7 @@ Rooster v2 is a guarded autonomous engineering workspace for Windows and Python.
 - **Persistent task memory** — task state survives application restarts with atomic replacement.
 - **Desktop GUI** — live activity, task history, checkpoint control, and emergency-stop controls.
 - **Windows app build** — GitHub Actions automatically builds a standalone `Rooster Autonomous Engineer.exe` for Windows.
+- **Android mobile companion** — an Android app can connect to the Rooster computer for status and emergency-stop control.
 
 ## Safety boundary
 
@@ -45,6 +46,31 @@ The build produces:
 ```text
 dist\Rooster Autonomous Engineer.exe
 ```
+
+## Android mobile companion
+
+The Android project is under `mobile/`. The companion currently provides:
+
+- Rooster computer connection settings
+- authenticated status checking
+- emergency stop
+- emergency-stop reset
+
+The phone app intentionally does **not** expose arbitrary engineering execution. Engineering work remains on the Rooster computer behind RoosterGuard.
+
+### Build the APK
+
+GitHub Actions automatically builds a debug APK on pushes to `v2/rooster-guard`. The artifact is named **Rooster-Autonomous-Engineer-Android**.
+
+To run the companion API on the Rooster computer:
+
+```powershell
+python -m pip install -r requirements.txt
+$env:ROOSTER_API_TOKEN = "choose-a-long-random-token"
+python mobile_server.py --host 0.0.0.0 --port 8765
+```
+
+Then enter the computer's LAN address and the same token in the Android app. Keep the API on a trusted network and use a firewall rule/VPN rather than exposing port 8765 directly to the public internet.
 
 ## Download the Windows app from GitHub Actions
 
