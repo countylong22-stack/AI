@@ -333,8 +333,9 @@ class RoosterEngineerApp:
             "Authorize Autonomous Pentester",
             "Rooster will autonomously run a bounded, read-only assessment of THIS computer only.\n\n"
             "It will check available OS security signals, local TCP listeners, Windows Firewall and Defender, "
-            "verify the audit log, and create HTML/JSON reports. It will not scan other devices, exploit services, "
-            "change settings, or automatically fix findings.\n\n"
+            "verify the audit log, and create HTML/JSON reports. If it finds HIGH, REVIEW, or UNKNOWN items, "
+            "it may repeat one read-only local snapshot to compare evidence (maximum two cycles). "
+            "It will not scan other devices, exploit services, change settings, or automatically fix findings.\n\n"
             "You will still need to approve the proposed action. Continue?",
             parent=self.root,
         )
@@ -345,7 +346,7 @@ class RoosterEngineerApp:
         task_id = f"pentest-auto-{uuid4().hex[:12]}"
         audit_path = self.workspace / ".rooster" / "pentester-audit.jsonl"
         reason = "User explicitly requested a bounded autonomous local security assessment."
-        action_text = "Plan, run, and verify the predefined read-only local posture assessment; export findings."
+        action_text = "Run a bounded plan/execute/evaluate/re-plan loop using read-only local snapshots; verify audit integrity and export findings."
         evidence = "Local security findings, report paths, plan execution states, and verified audit-chain result."
         action = Action("pentest_autonomous_local", reason, action_text, evidence, Risk.MEDIUM, "local computer")
 
