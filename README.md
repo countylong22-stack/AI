@@ -27,6 +27,7 @@ The `rooster_pentester/` package provides an authorization-first security assess
 - **Network checks:** explicit CIDR allowlisting and small, rate-limited TCP connection checks.
 - **Reports:** portable JSON and self-contained HTML reports with evidence, remediation guidance, severity summaries, and an explicitly heuristic triage score.
 - **Audit integrity:** hash-chained JSONL events, full-chain integrity verification, and refusal to append to a tampered log.
+- **Benchmark metrics:** compare findings against labeled test fixtures using precision, recall, F1, severity agreement, and explicit false-positive/false-negative lists.
 - **Cross-platform CI:** Python compilation and unit tests on Windows and Ubuntu.
 
 For the guided local workflow, click **PENTEST MY COMPUTER**. For the bounded autonomous workflow, click **AUTONOMOUS PENTEST**; both require confirmation and then **APPROVE ACTION** in RoosterGuard. The autonomous runner executes only its predefined read-only local plan, verifies the audit chain, and produces findings and recommendations. After completion, click **Open Pentest Report**. Reports are saved under `.rooster/pentester-reports/`; audit events are saved to `.rooster/pentester-audit.jsonl`.
