@@ -17,21 +17,20 @@ Rooster v2 is a guarded autonomous engineering workspace for Windows and Python.
 - **Windows app build** — GitHub Actions automatically builds a standalone `Rooster Autonomous Engineer.exe` for Windows.
 - **Android mobile companion** — an Android app can connect to the Rooster computer for status and emergency-stop control.
 
-## Rooster Pentester (new security assessment module)
+## Rooster Pentester
 
-The `rooster_pentester/` package adds an authorization-first starter toolkit for low-impact web and network checks:
+The `rooster_pentester/` package provides an authorization-first security assessment toolkit alongside Rooster Autonomous Engineer v2:
 
-- Exact-host allowlisting for HTTP(S) security-header review.
-- Explicit CIDR allowlisting for a small, rate-limited set of TCP connection checks.
-- Hash-chained JSONL Reason → Action → Evidence audit events.
-- Bounded timeouts, response reads, and port counts; no shell execution or exploit payloads.
-- Unit tests covering scope enforcement, validation, and audit chaining.
+- **Local computer audit:** read-only OS, TCP listener, Windows Firewall, and Defender checks where available, gated by user confirmation and RoosterGuard approval.
+- **Web security review:** exact-host allowlisting, common security-header checks, and redirects that are reported but never followed automatically.
+- **Network checks:** explicit CIDR allowlisting and small, rate-limited TCP connection checks.
+- **Reports:** portable JSON and self-contained HTML reports with evidence, remediation guidance, severity summaries, and an explicitly heuristic triage score.
+- **Audit integrity:** hash-chained JSONL events, full-chain integrity verification, and refusal to append to a tampered log.
+- **Cross-platform CI:** Python compilation and unit tests on Windows and Ubuntu.
 
-Read [Rooster Pentester documentation](docs/ROOSTER_PENTESTER.md). This is an initial assessment module, not a full penetration-testing suite. Use it only on systems you own or have explicit written permission to assess. It is kept in a separate package and does not bypass or replace RoosterGuard. Deeper policy integration and additional testing must be reviewed before production use.
+For the local workflow, click **PENTEST MY COMPUTER**, confirm local-only scope, review the proposed action, and click **APPROVE ACTION**. After completion, click **Open Pentest Report**. Reports are saved under `.rooster/pentester-reports/`; audit events are saved to `.rooster/pentester-audit.jsonl`.
 
-## One-click local computer pentest
-
-The desktop GUI includes **PENTEST MY COMPUTER**. It confirms scope, proposes a `pentest_local_computer` action through RoosterGuard, and requires a separate approval before running read-only checks on the computer running Rooster. Checks include OS details, local TCP listeners, and Windows Firewall/Defender signals where available. Audit evidence is stored in `.rooster/pentester-audit.jsonl`. It does not scan other devices, exploit services, or modify security settings. This is a basic posture review, not a full penetration test.
+See [Rooster Pentester documentation](docs/ROOSTER_PENTESTER.md). Only assess systems you own or have explicit written permission to test. This is a low-impact assessment foundation, not a full penetration test or proof that a system is secure. It does not include exploit payloads, credential attacks, stealth, persistence, or automatic remediation.
 
 ## Safety boundary
 
