@@ -118,6 +118,7 @@ class RoosterGuard:
         self.emergency_stop = EmergencyStop()
         self.policies: dict[str, ToolPolicy] = {
             "inspect_workspace": ToolPolicy(Permission.READ, Risk.LOW),
+            "pentest_local_computer": ToolPolicy(Permission.READ, Risk.MEDIUM, True),
             "read_file": ToolPolicy(Permission.READ, Risk.LOW),
             "git_status": ToolPolicy(Permission.READ, Risk.LOW),
             "checkpoint": ToolPolicy(Permission.READ, Risk.LOW),

@@ -17,6 +17,23 @@ Rooster v2 is a guarded autonomous engineering workspace for Windows and Python.
 - **Windows app build** — GitHub Actions automatically builds a standalone `Rooster Autonomous Engineer.exe` for Windows.
 - **Android mobile companion** — an Android app can connect to the Rooster computer for status and emergency-stop control.
 
+## Rooster Pentester
+
+The `rooster_pentester/` package provides an authorization-first security assessment toolkit alongside Rooster Autonomous Engineer v2:
+
+- **Local computer audit:** read-only OS, TCP listener, Windows Firewall, and Defender checks where available, gated by user confirmation and RoosterGuard approval.
+- **Bounded autonomous assessment:** a rule-based plan → execute → evaluate → re-plan loop that corroborates actionable findings with a second read-only local snapshot, compares evidence, verifies audit integrity, and stops at a hard cycle limit; it never expands scope or applies fixes.
+- **Web security review:** exact-host allowlisting, common security-header checks, and redirects that are reported but never followed automatically.
+- **Network checks:** explicit CIDR allowlisting and small, rate-limited TCP connection checks.
+- **Reports:** portable JSON and self-contained HTML reports with evidence, remediation guidance, severity summaries, and an explicitly heuristic triage score.
+- **Audit integrity:** hash-chained JSONL events, full-chain integrity verification, and refusal to append to a tampered log.
+- **Benchmark metrics:** compare findings against labeled test fixtures using precision, recall, F1, severity agreement, and explicit false-positive/false-negative lists.
+- **Cross-platform CI:** Python compilation and unit tests on Windows and Ubuntu.
+
+For the guided local workflow, click **PENTEST MY COMPUTER**. For the bounded autonomous workflow, click **AUTONOMOUS PENTEST**; both require confirmation and then **APPROVE ACTION** in RoosterGuard. The autonomous runner executes only its predefined read-only local plan, verifies the audit chain, and produces findings and recommendations. After completion, click **Open Pentest Report**. Reports are saved under `.rooster/pentester-reports/`; audit events are saved to `.rooster/pentester-audit.jsonl`.
+
+See [Rooster Pentester documentation](docs/ROOSTER_PENTESTER.md). Only assess systems you own or have explicit written permission to test. This is a low-impact assessment foundation, not a full penetration test or proof that a system is secure. It does not include exploit payloads, credential attacks, stealth, persistence, or automatic remediation.
+
 ## Safety boundary
 
 Rooster v2 does not silently grant itself network access, Git pushes, destructive deletion, arbitrary shell execution, or other high-impact capabilities. Those capabilities require explicit policy entries and, where configured, human approval. The safety boundary itself should remain an operator-controlled repository change.
@@ -38,10 +55,10 @@ python -m unittest discover -s tests -v
 ## Build Windows EXE locally
 
 ```powershell
-.\build_windows.ps1
+.\\build_windows.ps1
 ```
 
-The build produces `dist\Rooster Autonomous Engineer.exe`.
+The build produces `dist\\Rooster Autonomous Engineer.exe`.
 
 ## Android mobile companion
 
