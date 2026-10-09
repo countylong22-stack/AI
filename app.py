@@ -331,10 +331,10 @@ class RoosterEngineerApp:
             return
         confirmed = messagebox.askyesno(
             "Authorize Autonomous Pentester",
-            "Rooster will autonomously run a bounded, read-only assessment of THIS computer only.\\n\\n"
+            "Rooster will autonomously run a bounded, read-only assessment of THIS computer only.\n\n"
             "It will check available OS security signals, local TCP listeners, Windows Firewall and Defender, "
             "verify the audit log, and create HTML/JSON reports. It will not scan other devices, exploit services, "
-            "change settings, or automatically fix findings.\\n\\n"
+            "change settings, or automatically fix findings.\n\n"
             "You will still need to approve the proposed action. Continue?",
             parent=self.root,
         )
