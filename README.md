@@ -22,7 +22,7 @@ Rooster v2 is a guarded autonomous engineering workspace for Windows and Python.
 The `rooster_pentester/` package provides an authorization-first security assessment toolkit alongside Rooster Autonomous Engineer v2:
 
 - **Local computer audit:** read-only OS, TCP listener, Windows Firewall, and Defender checks where available, gated by user confirmation and RoosterGuard approval.
-- **Bounded autonomous assessment:** a predefined preflight → local posture → audit integrity verification → triage workflow, with progress callbacks and emergency-stop checks; it never expands scope or applies fixes.
+- **Bounded autonomous assessment:** a rule-based plan → execute → evaluate → re-plan loop that corroborates actionable findings with a second read-only local snapshot, compares evidence, verifies audit integrity, and stops at a hard cycle limit; it never expands scope or applies fixes.
 - **Web security review:** exact-host allowlisting, common security-header checks, and redirects that are reported but never followed automatically.
 - **Network checks:** explicit CIDR allowlisting and small, rate-limited TCP connection checks.
 - **Reports:** portable JSON and self-contained HTML reports with evidence, remediation guidance, severity summaries, and an explicitly heuristic triage score.
