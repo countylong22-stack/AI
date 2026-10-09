@@ -29,6 +29,10 @@ The `rooster_pentester/` package adds an authorization-first starter toolkit for
 
 Read [Rooster Pentester documentation](docs/ROOSTER_PENTESTER.md). This is an initial assessment module, not a full penetration-testing suite. Use it only on systems you own or have explicit written permission to assess. It is kept in a separate package and does not bypass or replace RoosterGuard. Deeper policy integration and additional testing must be reviewed before production use.
 
+## One-click local computer pentest
+
+The desktop GUI includes **PENTEST MY COMPUTER**. It confirms scope, proposes a `pentest_local_computer` action through RoosterGuard, and requires a separate approval before running read-only checks on the computer running Rooster. Checks include OS details, local TCP listeners, and Windows Firewall/Defender signals where available. Audit evidence is stored in `.rooster/pentester-audit.jsonl`. It does not scan other devices, exploit services, or modify security settings. This is a basic posture review, not a full penetration test.
+
 ## Safety boundary
 
 Rooster v2 does not silently grant itself network access, Git pushes, destructive deletion, arbitrary shell execution, or other high-impact capabilities. Those capabilities require explicit policy entries and, where configured, human approval. The safety boundary itself should remain an operator-controlled repository change.
