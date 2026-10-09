@@ -15,6 +15,7 @@ from rooster_engine.creative_media import CreativeStudio, CreativeStudioError
 from rooster_engine.autonomous import AutonomousCoder
 from rooster_engine.interaction import parse_chat_action
 from uuid import uuid4
+from rooster_pentester.autonomous import run_autonomous_local_assessment
 
 APP_NAME = "Rooster Autonomous Engineer"
 DATA_FILE = Path.home() / ".rooster_autonomous_engineer.json"
@@ -60,6 +61,7 @@ class RoosterEngineerApp:
         ttk.Button(top, text="MAKE VIDEO", command=self.make_video).pack(side="right", padx=6)
         ttk.Button(top, text="MAKE MEDIA", command=self.make_media).pack(side="right", padx=6)
         ttk.Button(top, text="PENTEST MY COMPUTER", command=self.pentest_my_computer).pack(side="right", padx=6)
+        ttk.Button(top, text="AUTONOMOUS PENTEST", command=self.start_autonomous_pentest).pack(side="right", padx=6)
         ttk.Button(top, text="AUTONOMOUS MODE", command=self.start_autonomous_mode).pack(side="right", padx=6)
 
         main = ttk.Panedwindow(self.root, orient="horizontal")
@@ -318,6 +320,46 @@ class RoosterEngineerApp:
 
         self.log("PENTEST: local-only assessment proposed. Review and click APPROVE ACTION to execute.")
         self.propose_action(action, execute_local_audit, task_id)
+
+    def start_autonomous_pentest(self):
+        """Run the bounded autonomous local assessment behind explicit consent and RoosterGuard approval."""
+        if self.action_running or self.pending_action:
+            messagebox.showwarning("Rooster Autonomous Pentester", "Finish or reject the current action before starting.")
+            return
+        if self.engine.guard.emergency_stop.stopped:
+            messagebox.showwarning("Rooster Autonomous Pentester", "Emergency Stop is active. Reset it before starting.")
+            return
+        confirmed = messagebox.askyesno(
+            "Authorize Autonomous Pentester",
+            "Rooster will autonomously run a bounded, read-only assessment of THIS computer only.\\n\\n"
+            "It will check available OS security signals, local TCP listeners, Windows Firewall and Defender, "
+            "verify the audit log, and create HTML/JSON reports. It will not scan other devices, exploit services, "
+            "change settings, or automatically fix findings.\\n\\n"
+            "You will still need to approve the proposed action. Continue?",
+            parent=self.root,
+        )
+        if not confirmed:
+            self.log("AUTONOMOUS PENTEST: user cancelled; no assessment was run.")
+            return
+
+        task_id = f"pentest-auto-{uuid4().hex[:12]}"
+        audit_path = self.workspace / ".rooster" / "pentester-audit.jsonl"
+        reason = "User explicitly requested a bounded autonomous local security assessment."
+        action_text = "Plan, run, and verify the predefined read-only local posture assessment; export findings."
+        evidence = "Local security findings, report paths, plan execution states, and verified audit-chain result."
+        action = Action("pentest_autonomous_local", reason, action_text, evidence, Risk.MEDIUM, "local computer")
+
+        def execute_autonomous_assessment():
+            audit_path.parent.mkdir(parents=True, exist_ok=True)
+            return run_autonomous_local_assessment(
+                audit_path=str(audit_path),
+                consent_confirmed=True,
+                stop_check=self.engine.guard.emergency_stop.check,
+                progress=self.log,
+            )
+
+        self.log("AUTONOMOUS PENTEST: bounded plan proposed; awaiting RoosterGuard human approval.")
+        self.propose_action(action, execute_autonomous_assessment, task_id)
 
     def make_video(self):
         """Run the complete AI video pipeline from one button."""
