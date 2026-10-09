@@ -57,6 +57,7 @@ class RoosterEngineerApp:
         ttk.Button(top, text="Choose Workspace", command=self.choose_workspace).pack(side="right")
         ttk.Button(top, text="MAKE VIDEO", command=self.make_video).pack(side="right", padx=6)
         ttk.Button(top, text="MAKE MEDIA", command=self.make_media).pack(side="right", padx=6)
+        ttk.Button(top, text="PENTEST MY COMPUTER", command=self.pentest_my_computer).pack(side="right", padx=6)
         ttk.Button(top, text="AUTONOMOUS MODE", command=self.start_autonomous_mode).pack(side="right", padx=6)
 
         main = ttk.Panedwindow(self.root, orient="horizontal")
@@ -266,6 +267,48 @@ class RoosterEngineerApp:
         self.set_action_status("REJECTED", action_id)
         self.chat_log("YOU", f"REJECTED action {action_id}")
         self.chat_log("ROOSTER", "Rejected. Nothing was executed.")
+
+    def pentest_my_computer(self):
+        """Propose a read-only local security audit through RoosterGuard."""
+        if self.action_running or self.pending_action:
+            messagebox.showwarning("Rooster Pentester", "Finish or reject the current action before starting a scan.")
+            return
+        if self.engine.guard.emergency_stop.stopped:
+            messagebox.showwarning("Rooster Pentester", "Emergency Stop is active. Reset it before starting.")
+            return
+        confirmed = messagebox.askyesno(
+            "Authorize Local Computer Pentest",
+            "Rooster will inspect THIS computer only using read-only checks for OS details, "
+            "TCP listening ports, Windows Firewall, and Defender status where available.\n\n"
+            "It will not exploit services, scan other devices, change settings, or delete files. "
+            "Results and evidence will be recorded in the local Rooster audit log.\n\n"
+            "Continue and request the scan?",
+            parent=self.root,
+        )
+        if not confirmed:
+            self.log("PENTEST: user cancelled before authorization; no scan was run.")
+            return
+        task_id = f"pentest-local-{uuid4().hex[:12]}"
+        reason = "User explicitly requested a read-only security assessment of this computer."
+        action_text = "Inspect local OS security signals and TCP listeners without changing configuration."
+        evidence = "Local posture findings, command output where available, and hash-chained audit entry."
+        action = Action("pentest_local_computer", reason, action_text, evidence, Risk.MEDIUM, "local computer")
+
+        def execute_local_audit():
+            return self.engine.tools.run(
+                "pentest_local_computer",
+                reason=reason,
+                action=action_text,
+                evidence=evidence,
+                risk=Risk.MEDIUM,
+                target="local computer",
+                actor="human",
+                task_id=task_id,
+                consent_confirmed=True,
+            )
+
+        self.log("PENTEST: local-only assessment proposed. Review and click APPROVE ACTION to execute.")
+        self.propose_action(action, execute_local_audit, task_id)
 
     def make_video(self):
         """Run the complete AI video pipeline from one button."""
