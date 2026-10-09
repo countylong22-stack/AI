@@ -14,6 +14,7 @@ from .runtime import RuntimeBudget, RuntimeLimits
 from .verification import VerificationEngine
 from .analysis import CodebaseAnalyzer, prioritize_findings
 from .creative_media import CreativeStudio
+from rooster_pentester.local_audit import run_local_computer_audit
 
 
 @dataclass
@@ -218,6 +219,14 @@ class AutonomousEngineer:
             lambda: self.verifier.run_test_suite(self.workspace.root, self.guard),
         )
         self.tools.register("create_media_project", self.create_media_project)
+        self.tools.register("pentest_local_computer", self.pentest_local_computer)
+
+    def pentest_local_computer(self, *, consent_confirmed: bool = False) -> dict[str, Any]:
+        """Run a read-only posture audit on this computer after user approval."""
+        return run_local_computer_audit(
+            audit_path=str(self.workspace.rooster_dir / "pentester-audit.jsonl"),
+            consent_confirmed=consent_confirmed,
+        )
 
     def create_media_project(self, idea: str, output_dir: str = "video_projects/rooster_media", total_seconds: int = 120, format: str = "vertical") -> str:
         """Plan and render a complete video + graphics + commentary project."""
