@@ -17,6 +17,18 @@ Rooster v2 is a guarded autonomous engineering workspace for Windows and Python.
 - **Windows app build** — GitHub Actions automatically builds a standalone `Rooster Autonomous Engineer.exe` for Windows.
 - **Android mobile companion** — an Android app can connect to the Rooster computer for status and emergency-stop control.
 
+## Rooster Pentester (new security assessment module)
+
+The `rooster_pentester/` package adds an authorization-first starter toolkit for low-impact web and network checks:
+
+- Exact-host allowlisting for HTTP(S) security-header review.
+- Explicit CIDR allowlisting for a small, rate-limited set of TCP connection checks.
+- Hash-chained JSONL Reason → Action → Evidence audit events.
+- Bounded timeouts, response reads, and port counts; no shell execution or exploit payloads.
+- Unit tests covering scope enforcement, validation, and audit chaining.
+
+Read [Rooster Pentester documentation](docs/ROOSTER_PENTESTER.md). This is an initial assessment module, not a full penetration-testing suite. Use it only on systems you own or have explicit written permission to assess. It is kept in a separate package and does not bypass or replace RoosterGuard. Deeper policy integration and additional testing must be reviewed before production use.
+
 ## Safety boundary
 
 Rooster v2 does not silently grant itself network access, Git pushes, destructive deletion, arbitrary shell execution, or other high-impact capabilities. Those capabilities require explicit policy entries and, where configured, human approval. The safety boundary itself should remain an operator-controlled repository change.
@@ -38,10 +50,10 @@ python -m unittest discover -s tests -v
 ## Build Windows EXE locally
 
 ```powershell
-.\build_windows.ps1
+.\\build_windows.ps1
 ```
 
-The build produces `dist\Rooster Autonomous Engineer.exe`.
+The build produces `dist\\Rooster Autonomous Engineer.exe`.
 
 ## Android mobile companion
 
