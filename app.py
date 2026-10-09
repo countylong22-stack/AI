@@ -2,6 +2,7 @@ import os
 import subprocess
 import json
 import threading
+import webbrowser
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
@@ -29,6 +30,7 @@ class RoosterEngineerApp:
         self.engine = AutonomousEngineer(self.workspace, DATA_FILE)
         self.pending_action = None
         self.action_running = False
+        self.latest_pentest_report = None
         self.build_ui()
         self.log("Interactive chat: type a request and click Send to Rooster.")
         self.refresh_tasks()
@@ -116,6 +118,7 @@ class RoosterEngineerApp:
         ttk.Button(bottom, text="Run Git Status", command=self.git_status).pack(side="left")
         ttk.Button(bottom, text="Checkpoint", command=self.create_checkpoint).pack(side="left", padx=6)
         ttk.Button(bottom, text="Save Task Log", command=self.save_log).pack(side="left")
+        ttk.Button(bottom, text="Open Pentest Report", command=self.open_pentest_report).pack(side="left", padx=6)
 
     def chat_log(self, speaker, message):
         stamp = datetime.now().strftime("%H:%M:%S")
@@ -239,6 +242,12 @@ class RoosterEngineerApp:
     def _execute_approved_action(self, executor, tool_name, action_id):
         try:
             evidence = executor()
+            if isinstance(evidence, dict):
+                report_files = evidence.get("report_files", {})
+                html_report = report_files.get("html") if isinstance(report_files, dict) else None
+                if html_report and Path(html_report).is_file():
+                    self.latest_pentest_report = Path(html_report)
+                    self.log(f"PENTEST REPORT READY: {html_report}")
             if evidence:
                 self.chat_log("ROOSTER", json.dumps(evidence, indent=2, default=str) if not isinstance(evidence, str) else evidence)
             self.root.after(0, self._finish_approved_action, True, tool_name, action_id, "")
@@ -473,6 +482,24 @@ class RoosterEngineerApp:
             self.log(f"Workspace changed to: {self.workspace}")
             self.log(f"Tools: {', '.join(self.engine.tools.names())}")
             self.set_action_status("IDLE", "Workspace changed; no pending action")
+
+    def open_pentest_report(self):
+        """Open the latest generated local Pentester HTML report."""
+        report = self.latest_pentest_report
+        if not report or not report.is_file():
+            messagebox.showinfo(
+                "Rooster Pentester",
+                "No local pentest report is available yet. Run PENTEST MY COMPUTER first and approve the proposed action.",
+                parent=self.root,
+            )
+            return
+        try:
+            opened = webbrowser.open(report.resolve().as_uri())
+            if not opened:
+                raise RuntimeError("The system browser did not confirm opening the report.")
+            self.log(f"Opened Pentester report: {report}")
+        except Exception as exc:
+            messagebox.showerror("Rooster Pentester", f"Could not open the report:\n{exc}", parent=self.root)
 
     def open_workspace(self):
         try:
