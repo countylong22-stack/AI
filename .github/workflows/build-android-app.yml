@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - v2/rooster-guard
+      - 'feature/**'
+  pull_request:
+    branches:
+      - v2/rooster-guard
   workflow_dispatch:
 
 permissions:
