@@ -222,7 +222,7 @@ class AutonomousCoder:
             denied_reason = ""
             if relative.is_absolute() or ".." in relative.parts:
                 denied_reason = "absolute_or_traversal_path"
-            elif any(part in blocked_names or part.startswith(".env") for part in parts):
+            elif any(part in blocked_names or part.startswith((".env", "secret", "credential", "password", "token", "api_key")) for part in parts):
                 denied_reason = "sensitive_path"
             elif any(part in {".github", "workflows"} for part in parts) and ".github" in parts:
                 denied_reason = "workflow_configuration"
@@ -241,7 +241,7 @@ class AutonomousCoder:
                 resolved_relative = candidate.relative_to(root).as_posix().lower()
                 resolved_parts = [part.lower() for part in Path(resolved_relative).parts]
                 if (
-                    any(part in blocked_names or part.startswith(".env") for part in resolved_parts)
+                    any(part in blocked_names or part.startswith((".env", "secret", "credential", "password", "token", "api_key")) for part in resolved_parts)
                     or (".github" in resolved_parts and "workflows" in resolved_parts)
                     or resolved_relative in blocked_files
                     or candidate.suffix.lower() in blocked_suffixes
