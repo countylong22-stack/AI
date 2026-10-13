@@ -65,6 +65,36 @@ class AutonomousCoderTests(unittest.TestCase):
             self.assertIn("autonomous_task_completed", audit)
             self.assertIn("project_file_written", audit)
 
+    def test_autonomous_read_filter_blocks_secrets_and_protected_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "sample.txt").write_text("safe", encoding="utf-8")
+            (root / ".env").write_text("API_KEY=do-not-read", encoding="utf-8")
+            (root / "secrets.txt").write_text("private", encoding="utf-8")
+            protected = root / "rooster_engine"
+            protected.mkdir()
+            (protected / "guard.py").write_text("protected", encoding="utf-8")
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            (workflows / "deploy.yml").write_text("protected", encoding="utf-8")
+
+            engineer = AutonomousEngineer(root, root / "tasks.json")
+            coder = AutonomousCoder(engineer, client=FakeResponsesClient(), max_iterations=1)
+            safe = coder._safe_read_paths([
+                "sample.txt",
+                ".env",
+                "secrets.txt",
+                "rooster_engine/guard.py",
+                ".github/workflows/deploy.yml",
+                "../outside.txt",
+                str(root / "sample.txt"),
+                "missing.txt",
+            ])
+
+            self.assertEqual(safe, ["sample.txt"])
+            audit = (root / ".rooster" / "audit.jsonl").read_text(encoding="utf-8")
+            self.assertIn("autonomous_read_path_denied", audit)
+
     def test_autonomous_cannot_write_protected_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
