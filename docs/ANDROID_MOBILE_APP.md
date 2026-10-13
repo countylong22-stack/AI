@@ -1,6 +1,6 @@
 # Rooster Android companion
 
-The Android app lets you connect to the Rooster computer, submit a bounded autonomous engineering objective, refresh its status, and use the emergency stop. **The AI engine and workspace stay on the computer**; the phone is a remote control, not a separate local AI engine.
+Rooster AI is intended to be a voice-enabled Android companion. It provides text chat, speech-to-text through Android's speech recognition service, spoken replies through Android TextToSpeech, PC status, bounded autonomous engineering task submission, task progress, and emergency stop. The **AI conversation service and engineering engine run on your Windows PC**; the phone is the interface, not a separate local AI engine. Speech recognition availability depends on Android's installed speech service and network/device settings.
 
 ## Build and install the APK
 
@@ -28,20 +28,22 @@ The companion requires HTTPS for remote connections. Do not port-forward port 87
    openssl x509 -req -in rooster-server.csr -CA rooster-ca.crt -CAkey rooster-ca.key -CAcreateserial -out rooster-server.crt -days 365 -sha256 -extfile rooster-server.ext
    ```
 
-3. Transfer `rooster-ca.crt` to the phone and install it as a user CA certificate in Android security settings. Menu names vary by Android version. The app trusts system CAs and user-installed CAs, but it refuses plain HTTP.
+3. Transfer `rooster-ca.crt` to the phone and install it as a user CA certificate in Android security settings. Menu names vary by Android version. The app trusts system CAs and user-installed CAs, but refuses plain HTTP.
 4. In PowerShell on the Rooster PC, set a long random token for the current session, then start the API from the repository folder:
 
    ```powershell
    $env:ROOSTER_API_TOKEN = "replace-with-a-long-random-secret"
    $env:OPENAI_API_KEY = "your-OpenAI-API-key"
-   # Optional: set ROOSTER_AGENT_MODEL to a model name enabled for your API account.
+   # Optional: set ROOSTER_CHAT_MODEL to a chat model enabled for your API account.
+   # Optional: set ROOSTER_AGENT_MODEL to a model enabled for your autonomous agent.
    python mobile_server.py --host 0.0.0.0 --port 8765 --ssl-certfile rooster-server.crt --ssl-keyfile rooster-server.key
    ```
 
-   Keep the certificate and key paths correct for the directory you run the command from. Keep the API token private. Allow TCP 8765 through Windows Firewall only on your **Private** network profile if Windows prompts you.
+   Keep certificate and key paths correct for the directory you run the command from. Keep the API token private. Allow TCP 8765 through Windows Firewall only on your **Private** network profile if Windows prompts you.
 
-5. Open the app. Enter `https://192.168.1.20:8765` using your PC's actual LAN IP and enter the same API token. Tap **CONNECT / STATUS**.
-6. Enter a task and tap **RUN AUTONOMOUS TASK**. Tap **REFRESH TASK STATUS** to check progress. **EMERGENCY STOP** blocks further guarded actions. Reset only when you deliberately want to resume.
+5. Open the app. Enter `https://192.168.1.20:8765` using your PC's actual LAN IP and enter the same API token. Tap **CONNECT / CHECK STATUS**.
+6. Under **TALK TO ROOSTER**, type a message and tap **SEND**, or tap **TALK** and speak. Android may ask for microphone permission. **VOICE ON/OFF** controls spoken replies. Ordinary chat does not execute commands.
+7. To give Rooster engineering work, enter the objective under **ROOSTER ENGINEERING CONTROLS** and tap **RUN AUTONOMOUS TASK**. Tap **REFRESH TASK STATUS** to check progress. **EMERGENCY STOP** blocks further guarded actions. Reset only when you deliberately want to resume.
 
 ## Autonomy and limits
 
@@ -52,5 +54,6 @@ Rooster's autonomous coding loop plans, inspects eligible workspace files, propo
 - Do not use this API on public Wi-Fi.
 - Do not expose port 8765 to the public internet or configure router port forwarding.
 - Use a fresh, private API token; never commit tokens, certificate private keys, or the CA private key.
+- Chat history currently lives in the app session; it is sent to your own Rooster PC API for the model response.
 - A task list is held in the running API process; task status IDs may no longer be available after restarting the API.
 - The Android app build is a debug APK for testing, not a Play Store release.
