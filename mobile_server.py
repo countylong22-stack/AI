@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import os
 import threading
 import uuid
@@ -127,11 +128,29 @@ def reset() -> dict[str, object]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Rooster mobile companion API")
-    parser.add_argument("--host", default="0.0.0.0", help="Bind to the LAN interface so your phone can connect.")
+    parser.add_argument("--host", default="127.0.0.1", help="Use 127.0.0.1 for local-only access.")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--ssl-certfile", help="TLS certificate file required for LAN access.")
+    parser.add_argument("--ssl-keyfile", help="TLS private key file required for LAN access.")
     args = parser.parse_args()
+
+    try:
+        is_loopback = args.host.lower() == "localhost" or ipaddress.ip_address(args.host).is_loopback
+    except ValueError:
+        is_loopback = False
+    if not is_loopback and not (args.ssl_certfile and args.ssl_keyfile):
+        parser.error("Non-loopback access requires --ssl-certfile and --ssl-keyfile; do not expose the API over plain HTTP.")
+    if bool(args.ssl_certfile) != bool(args.ssl_keyfile):
+        parser.error("Provide both --ssl-certfile and --ssl-keyfile.")
+
     import uvicorn
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(
+        app,
+        host=args.host,
+        port=args.port,
+        ssl_certfile=args.ssl_certfile,
+        ssl_keyfile=args.ssl_keyfile,
+    )
 
 
 if __name__ == "__main__":
