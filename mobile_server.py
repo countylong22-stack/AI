@@ -2,14 +2,27 @@ from __future__ import annotations
 
 import argparse
 import os
+import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field
 
+from rooster_engine.autonomous import AutonomousCoder
 from rooster_engine.core import AutonomousEngineer
 
-app = FastAPI(title="Rooster Mobile Companion API", version="1.0")
+app = FastAPI(title="Rooster Mobile Companion API", version="1.1")
 engine = AutonomousEngineer(os.getcwd(), os.path.expanduser("~/.rooster_mobile_tasks.json"))
 TOKEN = os.getenv("ROOSTER_API_TOKEN", "")
+_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rooster-mobile")
+_tasks: dict[str, dict[str, Any]] = {}
+_tasks_lock = threading.Lock()
+
+
+class TaskRequest(BaseModel):
+    objective: str = Field(min_length=1, max_length=2000)
 
 
 def require_token(authorization: str | None = Header(default=None)) -> None:
@@ -19,6 +32,26 @@ def require_token(authorization: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Invalid Rooster API token.")
 
 
+def _run_task(task_id: str, objective: str) -> None:
+    with _tasks_lock:
+        _tasks[task_id]["status"] = "running"
+    try:
+        result = AutonomousCoder(engine, max_iterations=3).run(objective, task_id=task_id)
+        with _tasks_lock:
+            _tasks[task_id].update(
+                status=result.status,
+                iterations=result.iterations,
+                summary=result.summary,
+                evidence=result.evidence,
+            )
+    except Exception as exc:
+        with _tasks_lock:
+            _tasks[task_id].update(
+                status="stopped" if engine.guard.emergency_stop.stopped else "failed",
+                summary=str(exc)[:1000],
+            )
+
+
 @app.get("/health")
 def health() -> dict[str, object]:
     return {"ok": True, "name": "Rooster Autonomous Engineer", "version": "2"}
@@ -26,16 +59,63 @@ def health() -> dict[str, object]:
 
 @app.get("/status", dependencies=[Depends(require_token)])
 def status() -> dict[str, object]:
+    with _tasks_lock:
+        active = next(
+            ({"task_id": task_id, "objective": task["objective"], "status": task["status"]}
+             for task_id, task in reversed(list(_tasks.items()))
+             if task["status"] in {"queued", "running"}),
+            None,
+        )
     return {
         "ok": True,
         "emergency_stop": engine.guard.emergency_stop.stopped,
         "tools": engine.tools.names(),
+        "active_task": active,
     }
+
+
+@app.post("/tasks", dependencies=[Depends(require_token)])
+def start_task(request: TaskRequest) -> dict[str, object]:
+    objective = request.objective.strip()
+    if not objective:
+        raise HTTPException(status_code=422, detail="Objective cannot be blank.")
+    if engine.guard.emergency_stop.stopped:
+        raise HTTPException(status_code=409, detail="Emergency stop is active. Reset it before starting a task.")
+
+    with _tasks_lock:
+        if any(task["status"] in {"queued", "running"} for task in _tasks.values()):
+            raise HTTPException(status_code=409, detail="A task is already running. Refresh its status before starting another.")
+        task_id = uuid.uuid4().hex
+        _tasks[task_id] = {
+            "task_id": task_id,
+            "objective": objective,
+            "status": "queued",
+            "iterations": 0,
+            "summary": "Task queued.",
+            "evidence": [],
+        }
+    _executor.submit(_run_task, task_id, objective)
+    engine.guard.audit.write("mobile_task_queued", task_id=task_id, objective=objective)
+    return {"ok": True, "task_id": task_id, "status": "queued"}
+
+
+@app.get("/tasks/{task_id}", dependencies=[Depends(require_token)])
+def get_task(task_id: str) -> dict[str, object]:
+    with _tasks_lock:
+        task = _tasks.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found on this server session.")
+        return dict(task)
 
 
 @app.post("/stop", dependencies=[Depends(require_token)])
 def stop() -> dict[str, object]:
     engine.emergency_stop()
+    with _tasks_lock:
+        for task in _tasks.values():
+            if task["status"] in {"queued", "running"}:
+                task["status"] = "stopped"
+                task["summary"] = "Emergency stop requested."
     return {"ok": True, "emergency_stop": True}
 
 
@@ -47,7 +127,7 @@ def reset() -> dict[str, object]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Rooster mobile companion API")
-    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--host", default="0.0.0.0", help="Bind to the LAN interface so your phone can connect.")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     import uvicorn
