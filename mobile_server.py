@@ -80,6 +80,8 @@ def start_task(request: TaskRequest) -> dict[str, object]:
     objective = request.objective.strip()
     if not objective:
         raise HTTPException(status_code=422, detail="Objective cannot be blank.")
+    if not os.getenv("OPENAI_API_KEY"):
+        raise HTTPException(status_code=503, detail="Set OPENAI_API_KEY on the Rooster PC before starting autonomous tasks.")
     if engine.guard.emergency_stop.stopped:
         raise HTTPException(status_code=409, detail="Emergency stop is active. Reset it before starting a task.")
 
