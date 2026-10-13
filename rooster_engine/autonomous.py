@@ -189,16 +189,78 @@ class AutonomousCoder:
     def _planning_context(inventory: list[dict[str, Any]]) -> str:
         return json.dumps(inventory[:100], indent=2)
 
-    @staticmethod
-    def _safe_read_paths(paths: Any) -> list[str]:
+    def _safe_read_paths(self, paths: Any) -> list[str]:
+        """Accept only existing, workspace-contained, non-sensitive project files."""
         if not isinstance(paths, list):
             return []
-        result: list[str] = []
-        for value in paths[:MAX_READ_FILES]:
-            if isinstance(value, str) and value.strip():
-                result.append(value.strip())
-        return result
 
+        root = self.engineer.workspace.root.resolve()
+        blocked_names = {
+            ".git", ".rooster", ".ssh", ".aws", ".azure",
+            "credentials", "credential", "secrets", "secret",
+            "passwords", "password", "tokens", "token",
+        }
+        blocked_files = {
+            "app.py", "security.md",
+            "rooster_engine/guard.py", "rooster_engine/core.py",
+            "rooster_engine/command.py", "rooster_engine/runtime.py",
+            "rooster_engine/verification.py", "rooster_engine/analysis.py",
+        }
+        blocked_suffixes = {".pem", ".key", ".p12", ".pfx", ".kdbx"}
+        result: list[str] = []
+
+        for value in paths:
+            if len(result) >= MAX_READ_FILES:
+                break
+            if not isinstance(value, str) or not value.strip():
+                continue
+
+            raw = value.strip().replace("\\\\", "/")
+            relative = Path(raw)
+            normalized = relative.as_posix().lstrip("./").lower()
+            parts = [part.lower() for part in relative.parts]
+            denied_reason = ""
+            if relative.is_absolute() or ".." in relative.parts:
+                denied_reason = "absolute_or_traversal_path"
+            elif any(part in blocked_names or part.startswith(".env") for part in parts):
+                denied_reason = "sensitive_path"
+            elif any(part in {".github", "workflows"} for part in parts) and ".github" in parts:
+                denied_reason = "workflow_configuration"
+            elif normalized in blocked_files or Path(normalized).suffix in blocked_suffixes:
+                denied_reason = "protected_or_key_file"
+
+            candidate = (root / relative).resolve(strict=False)
+            if not denied_reason and candidate != root and root not in candidate.parents:
+                denied_reason = "workspace_escape"
+            if not denied_reason and (not candidate.is_file()):
+                denied_reason = "not_an_existing_file"
+
+            # Also inspect the resolved path so an innocently named symlink cannot
+            # point into a secret directory or protected configuration file.
+            if not denied_reason:
+                resolved_relative = candidate.relative_to(root).as_posix().lower()
+                resolved_parts = [part.lower() for part in Path(resolved_relative).parts]
+                if (
+                    any(part in blocked_names or part.startswith(".env") for part in resolved_parts)
+                    or (".github" in resolved_parts and "workflows" in resolved_parts)
+                    or resolved_relative in blocked_files
+                    or candidate.suffix.lower() in blocked_suffixes
+                ):
+                    denied_reason = "resolved_sensitive_path"
+
+            if denied_reason:
+                self.engineer.guard.audit.write(
+                    "autonomous_read_path_denied",
+                    requested_path=value,
+                    reason=denied_reason,
+                )
+                continue
+
+            safe_path = candidate.relative_to(root).as_posix()
+            if safe_path not in result:
+                result.append(safe_path)
+
+        return result
     def _planning_prompt(self, objective: str, context: str, iteration: int) -> str:
         return f"""You are Rooster Autonomous Engineer.
 You are operating inside a guarded local software repository.
