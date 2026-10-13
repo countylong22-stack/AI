@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from rooster_engine.autonomous import AutonomousCoder
 from rooster_engine.core import AutonomousEngineer
 
-app = FastAPI(title="Rooster Mobile Companion API", version="1.1")
+app = FastAPI(title="Rooster Mobile Companion API", version="1.2")
 engine = AutonomousEngineer(os.getcwd(), os.path.expanduser("~/.rooster_mobile_tasks.json"))
 TOKEN = os.getenv("ROOSTER_API_TOKEN", "")
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rooster-mobile")
@@ -24,6 +24,15 @@ _tasks_lock = threading.Lock()
 
 class TaskRequest(BaseModel):
     objective: str = Field(min_length=1, max_length=2000)
+
+
+class ChatMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage] = Field(min_length=1, max_length=20)
 
 
 def require_token(authorization: str | None = Header(default=None)) -> None:
@@ -72,7 +81,42 @@ def status() -> dict[str, object]:
         "emergency_stop": engine.guard.emergency_stop.stopped,
         "tools": engine.tools.names(),
         "active_task": active,
+        "chat_ready": bool(os.getenv("OPENAI_API_KEY")),
     }
+
+
+@app.post("/chat", dependencies=[Depends(require_token)])
+def chat(request: ChatRequest) -> dict[str, object]:
+    if not os.getenv("OPENAI_API_KEY"):
+        raise HTTPException(status_code=503, detail="Set OPENAI_API_KEY on the Rooster PC first.")
+    try:
+        from openai import OpenAI
+        client = OpenAI()
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are Rooster, the user's practical AI assistant and companion for Rooster Autonomous Engineer. "
+                    "Be conversational, helpful, concise, and honest. You can discuss plans and help the user prepare tasks, "
+                    "but ordinary chat does not execute commands or modify files. If the user wants engineering work performed, "
+                    "explain that they should use the Run Task control. Never claim a task was run unless task status confirms it. "
+                    "Respect safety boundaries and ask before destructive or consequential actions."
+                ),
+            },
+            *[{"role": item.role, "content": item.content} for item in request.messages[-20:]],
+        ]
+        response = client.chat.completions.create(
+            model=os.getenv("ROOSTER_CHAT_MODEL", "gpt-4o-mini"),
+            messages=messages,
+            max_tokens=700,
+            timeout=30.0,
+        )
+        answer = response.choices[0].message.content or "I didn't get a reply. Please try again."
+        return {"ok": True, "reply": answer}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Chat request failed: {str(exc)[:300]}") from exc
 
 
 @app.post("/tasks", dependencies=[Depends(require_token)])
