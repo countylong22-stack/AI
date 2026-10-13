@@ -4,7 +4,8 @@
     <application
         android:theme="@style/AppTheme"
         android:label="Rooster Autonomous Engineer"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
