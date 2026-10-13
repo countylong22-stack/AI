@@ -215,7 +215,7 @@ class AutonomousCoder:
             if not isinstance(value, str) or not value.strip():
                 continue
 
-            raw = value.strip().replace("\\\\", "/")
+            raw = value.strip().replace("\\", "/")
             relative = Path(raw)
             normalized = relative.as_posix().lstrip("./").lower()
             parts = [part.lower() for part in relative.parts]
