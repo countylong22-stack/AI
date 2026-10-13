@@ -19,13 +19,26 @@ APP_NAME = "Rooster Autonomous Engineer"
 DATA_FILE = Path.home() / ".rooster_autonomous_engineer.json"
 
 
+def default_workspace() -> Path:
+    """Choose a predictable workspace when the packaged app is launched by double-click."""
+    configured = os.environ.get("ROOSTER_WORKSPACE", "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+
+    current = Path.cwd().resolve()
+    if (current / ".git").exists() or (current / "rooster_engine").is_dir():
+        return current
+
+    return (Path.home() / "RoosterWorkspace").resolve()
+
+
 class RoosterEngineerApp:
     def __init__(self, root):
         self.root = root
         self.root.title(APP_NAME + " v2.3")
         self.root.geometry("1180x800")
         self.root.minsize(900, 620)
-        self.workspace = Path.cwd()
+        self.workspace = default_workspace()
         self.engine = AutonomousEngineer(self.workspace, DATA_FILE)
         self.pending_action = None
         self.action_running = False
