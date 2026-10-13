@@ -46,7 +46,7 @@ class MainActivity : Activity() {
         })
 
         server = EditText(this).apply {
-            hint = "Rooster PC address (example: http://192.168.1.20:8765)"
+            hint = "Rooster PC HTTPS address (example: https://192.168.1.20:8765)"
             setSingleLine(true)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         }
