@@ -33,6 +33,8 @@ The companion requires HTTPS for remote connections. Do not port-forward port 87
 
    ```powershell
    $env:ROOSTER_API_TOKEN = "replace-with-a-long-random-secret"
+   $env:OPENAI_API_KEY = "your-OpenAI-API-key"
+   # Optional: set ROOSTER_AGENT_MODEL to a model name enabled for your API account.
    python mobile_server.py --host 0.0.0.0 --port 8765 --ssl-certfile rooster-server.crt --ssl-keyfile rooster-server.key
    ```
 
