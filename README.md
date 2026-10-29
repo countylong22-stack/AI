@@ -42,6 +42,16 @@ python app.py
 python -m unittest discover -s tests -v
 ```
 
+The deterministic behavioral safety evaluations are also included in the unit-test suite. To run only those cases:
+
+```powershell
+python -m unittest discover -s tests -p "test_behavioral_evals.py" -v
+```
+
+## Dependency security
+
+GitHub Actions runs a scheduled `pip-audit` scan against the resolved application dependencies, and Dependabot proposes weekly updates for Python packages and GitHub Actions. A reported vulnerability blocks that audit run and should be triaged before release. These controls identify known vulnerabilities but do not replace a fully pinned, hash-verified release lockfile; reproducible dependency locking remains a release-readiness item.
+
 ## Build Windows EXE locally
 
 ```powershell
