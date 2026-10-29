@@ -224,7 +224,9 @@ class AutonomousCoder:
         if relative.is_absolute() or ".." in relative.parts:
             return None
 
-        normalized = relative.as_posix().lstrip("./")
+        normalized = relative.as_posix()
+        if normalized.startswith("./"):
+            normalized = normalized[2:]
         lowered_parts = [part.lower() for part in Path(normalized).parts]
         blocked_names = {
             ".git", ".rooster", ".ssh", ".aws", ".azure",
@@ -287,7 +289,10 @@ class AutonomousCoder:
 
             raw = value.strip().replace("\\", "/")
             relative = Path(raw)
-            normalized = relative.as_posix().lstrip("./").lower()
+            normalized = relative.as_posix()
+            if normalized.startswith("./"):
+                normalized = normalized[2:]
+            normalized = normalized.lower()
             parts = [part.lower() for part in relative.parts]
             denied_reason = ""
             if relative.is_absolute() or ".." in relative.parts:
