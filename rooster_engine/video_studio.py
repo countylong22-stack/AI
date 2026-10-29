@@ -14,7 +14,8 @@ from typing import Any
 from openai import OpenAI
 
 
-DEFAULT_MODEL = os.getenv("ROOSTER_VIDEO_MODEL", "gpt-6-luna")
+# Use a documented API model by default; deployments can override it explicitly.
+DEFAULT_MODEL = os.getenv("ROOSTER_VIDEO_MODEL", "gpt-4.1")
 
 
 class VideoStudioError(RuntimeError):
@@ -101,7 +102,10 @@ class VideoStudio:
         if not isinstance(scenes, list) or not scenes:
             raise VideoStudioError("Video plan contains no scenes.")
 
-        duration = sum(int(scene["duration_seconds"]) for scene in scenes)
+        try:
+            duration = sum(int(scene["duration_seconds"]) for scene in scenes)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise VideoStudioError("Video plan contains an invalid scene duration.") from exc
         if duration != total_seconds:
             raise VideoStudioError(
                 f"Scene durations total {duration}s; expected {total_seconds}s."
@@ -110,6 +114,8 @@ class VideoStudio:
             raise VideoStudioError("Video plan format does not match the request.")
 
         for scene in scenes:
+            if not isinstance(scene, dict):
+                raise VideoStudioError("Video plan contains an invalid scene.")
             for key in ("scene", "duration_seconds", "prompt", "transition",
                         "on_screen_text", "sound_design"):
                 if key not in scene:
