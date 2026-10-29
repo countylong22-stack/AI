@@ -14,6 +14,7 @@ Rooster v2 is a guarded autonomous engineering workspace for Windows and Python.
 - **Reason → Action → Evidence** — each task records why it is being done, what will be done, and what evidence should prove success.
 - **Persistent task memory** — task state survives application restarts with atomic replacement.
 - **Desktop GUI** — live activity, task history, checkpoint control, and emergency-stop controls.
+- **Engineering-only interface** — the desktop app exposes guarded autonomous engineering, workspace inspection, task history, verification, and emergency-stop controls. Video editing and media-generation actions are not part of the app or tool registry.
 - **Windows app build** — GitHub Actions automatically builds a standalone `Rooster Autonomous Engineer.exe` for Windows.
 - **Android mobile companion** — an Android app can connect to the Rooster computer for status and emergency-stop control.
 
