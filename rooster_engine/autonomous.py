@@ -108,9 +108,18 @@ class AutonomousCoder:
                 guard.emergency_stop.check()
                 if not isinstance(patch, dict):
                     continue
-                path = str(patch.get("path", "")).strip()
+                requested_path = str(patch.get("path", "")).strip()
+                path = self._safe_write_path(requested_path)
                 content = patch.get("content")
-                if not path or not isinstance(content, str):
+                if not isinstance(content, str):
+                    continue
+                if path is None:
+                    guard.audit.write(
+                        "autonomous_write_path_denied",
+                        task_id=task_id,
+                        requested_path=requested_path,
+                        reason="sensitive_protected_or_escaping_path",
+                    )
                     continue
                 if len(content) > MAX_WRITE_CHARS:
                     raise RuntimeError(f"Autonomous patch is too large: {path}")
@@ -204,6 +213,51 @@ class AutonomousCoder:
     @staticmethod
     def _planning_context(inventory: list[dict[str, Any]]) -> str:
         return json.dumps(inventory[:100], indent=2)
+
+    def _safe_write_path(self, value: Any) -> str | None:
+        """Reject secret/configuration paths, traversal, symlinks, and protected files."""
+        if not isinstance(value, str) or not value.strip():
+            return None
+
+        raw = value.strip().replace("\\", "/")
+        relative = Path(raw)
+        if relative.is_absolute() or ".." in relative.parts:
+            return None
+
+        normalized = relative.as_posix().lstrip("./")
+        lowered_parts = [part.lower() for part in Path(normalized).parts]
+        blocked_names = {
+            ".git", ".rooster", ".ssh", ".aws", ".azure",
+            "credentials", "credential", "secrets", "secret",
+            "passwords", "password", "tokens", "token",
+        }
+        blocked_suffixes = {".pem", ".key", ".p12", ".pfx", ".kdbx"}
+        if not normalized or any(
+            part in blocked_names
+            or part.startswith((".env", "secret", "credential", "password", "token", "api_key"))
+            for part in lowered_parts
+        ):
+            return None
+        if ".github" in lowered_parts and "workflows" in lowered_parts:
+            return None
+        if Path(normalized).suffix.lower() in blocked_suffixes:
+            return None
+        if self.engineer.guard.protected_path(normalized) is not None:
+            return None
+
+        root = self.engineer.workspace.root.resolve()
+        candidate = root / Path(normalized)
+        # Do not follow symlinks for autonomous writes. This avoids surprising writes
+        # through links even when their destination remains inside the repository.
+        cursor = root
+        for part in Path(normalized).parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                return None
+        resolved = candidate.resolve(strict=False)
+        if resolved == root or root not in resolved.parents:
+            return None
+        return Path(normalized).as_posix()
 
     def _safe_read_paths(self, paths: Any) -> list[str]:
         """Accept only existing, workspace-contained, non-sensitive project files."""
