@@ -95,7 +95,6 @@ class GuardTests(unittest.TestCase):
                 "rooster_engine/runtime.py",
                 "rooster_engine/verification.py",
                 "rooster_engine/analysis.py",
-                "app.py",
                 ".github/workflows/ci.yml",
                 "SECURITY.md",
             ]
@@ -111,6 +110,7 @@ class GuardTests(unittest.TestCase):
             self.assertEqual(guard.protected_path("RoOsTeR_EnGiNe/GuArD.PY"), "rooster_engine/guard.py")
             self.assertEqual(guard.protected_path(".github/workflows/release/build.yml"), ".github/workflows/*")
             self.assertIsNone(guard.protected_path("src/example.py"))
+            self.assertIsNone(guard.protected_path("app.py"))
 
     def test_write_tool_enforces_protected_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
