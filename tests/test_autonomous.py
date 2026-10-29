@@ -111,8 +111,8 @@ class AutonomousCoderTests(unittest.TestCase):
             tests_dir = root / "tests"
             tests_dir.mkdir()
             (tests_dir / "test_smoke.py").write_text(
-                "import unittest\\nclass SmokeTests(unittest.TestCase):\\n"
-                "    def test_smoke(self): self.assertTrue(True)\\n",
+                "import unittest\nclass SmokeTests(unittest.TestCase):\n"
+                "    def test_smoke(self): self.assertTrue(True)\n",
                 encoding="utf-8",
             )
             engineer = AutonomousEngineer(root, root / "tasks.json")
