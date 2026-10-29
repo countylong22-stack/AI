@@ -94,26 +94,22 @@ def chat(request: ChatRequest) -> dict[str, object]:
     try:
         from openai import OpenAI
         client = OpenAI()
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are Rooster, the user's practical AI assistant and companion for Rooster Autonomous Engineer. "
-                    "Be conversational, helpful, concise, and honest. You can discuss plans and help the user prepare tasks, "
-                    "but ordinary chat does not execute commands or modify files. If the user wants engineering work performed, "
-                    "explain that they should use the Run Task control. Never claim a task was run unless task status confirms it. "
-                    "Respect safety boundaries and ask before destructive or consequential actions."
-                ),
-            },
-            *[{"role": item.role, "content": item.content} for item in request.messages[-20:]],
-        ]
-        response = client.chat.completions.create(
-            model=os.getenv("ROOSTER_CHAT_MODEL", "gpt-4o-mini"),
-            messages=messages,
-            max_tokens=700,
+        instructions = (
+            "You are Rooster, the user's practical AI assistant and companion for Rooster Autonomous Engineer. "
+            "Be conversational, helpful, concise, and honest. You can discuss plans and help the user prepare tasks, "
+            "but ordinary chat does not execute commands or modify files. If the user wants engineering work performed, "
+            "explain that they should use the Run Task control. Never claim a task was run unless task status confirms it. "
+            "Respect safety boundaries and ask before destructive or consequential actions."
+        )
+        response = client.responses.create(
+            model=os.getenv("ROOSTER_CHAT_MODEL", "gpt-6.1-sol"),
+            reasoning={"effort": os.getenv("ROOSTER_CHAT_REASONING_EFFORT", "medium")},
+            instructions=instructions,
+            input=[{"role": item.role, "content": item.content} for item in request.messages[-20:]],
+            max_output_tokens=700,
             timeout=30.0,
         )
-        answer = response.choices[0].message.content or "I didn't get a reply. Please try again."
+        answer = response.output_text or "I didn't get a reply. Please try again."
         return {"ok": True, "reply": answer}
     except HTTPException:
         raise
