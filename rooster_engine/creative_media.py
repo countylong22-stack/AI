@@ -16,6 +16,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from .command_template import build_command
 from .video_renderer import VideoRenderer, VideoRendererError
 from .video_studio import VideoStudio, VideoStudioError
 
@@ -296,13 +297,14 @@ class CreativeStudio:
             request_path.write_text(
                 json.dumps(request, indent=2), encoding="utf-8"
             )
-            command = self.media_command.format(
-                request=str(request_path),
-                output=str(output),
-            )
             try:
+                command = build_command(
+                    self.media_command,
+                    request=str(request_path),
+                    output=str(output),
+                )
                 completed = subprocess.run(
-                    command, shell=True, capture_output=True, text=True, timeout=1800
+                    command, shell=False, capture_output=True, text=True, timeout=1800
                 )
             except Exception as exc:
                 raise CreativeStudioError(
