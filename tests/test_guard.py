@@ -22,7 +22,7 @@ class GuardTests(unittest.TestCase):
             records = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
             records[0]["detail"] = "tampered"
             audit_path.write_text(
-                "\\n".join(json.dumps(record, sort_keys=True) for record in records) + "\\n",
+                "\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n",
                 encoding="utf-8",
             )
             report = guard.audit.verify_chain()
@@ -38,7 +38,7 @@ class GuardTests(unittest.TestCase):
             records = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
             records[0]["event"] = "silently_changed"
             audit_path.write_text(
-                json.dumps(records[0], sort_keys=True) + "\\n",
+                json.dumps(records[0], sort_keys=True) + "\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "integrity check failed"):
