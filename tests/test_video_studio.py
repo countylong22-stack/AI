@@ -28,6 +28,29 @@ class TestVideoStudioValidation(unittest.TestCase):
         }
         VideoStudio._validate(plan, 10, "vertical")
 
+    def test_invalid_scene_duration_raises_domain_error(self):
+        plan = {
+            "format": "vertical",
+            "scenes": [{
+                "scene": 1,
+                "duration_seconds": "not-a-number",
+                "prompt": "test",
+                "transition": "cut",
+                "on_screen_text": "",
+                "sound_design": "",
+            }],
+        }
+        with self.assertRaises(VideoStudioError):
+            VideoStudio._validate(plan, 10, "vertical")
+
+    def test_non_object_scene_raises_domain_error(self):
+        with self.assertRaises(VideoStudioError):
+            VideoStudio._validate(
+                {"format": "vertical", "scenes": ["not-a-scene"]},
+                10,
+                "vertical",
+            )
+
     def test_rejects_wrong_duration(self):
         plan = {
             "format": "vertical",
