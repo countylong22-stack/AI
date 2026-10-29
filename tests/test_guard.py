@@ -19,6 +19,12 @@ class GuardTests(unittest.TestCase):
             self.assertTrue(report["valid"])
             self.assertEqual(report["records"], 2)
 
+            reopened = RoosterGuard(Path(tmp), audit_path)
+            reopened.audit.write("third_event", detail="after restart")
+            report = reopened.audit.verify_chain()
+            self.assertTrue(report["valid"])
+            self.assertEqual(report["records"], 3)
+
             records = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
             records[0]["detail"] = "tampered"
             audit_path.write_text(
