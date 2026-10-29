@@ -17,10 +17,10 @@ from openai import OpenAI
 
 from .core import AutonomousEngineer
 from .guard import Action, Risk
-from .runtime import RuntimeLimits
 
 
-DEFAULT_MODEL = os.getenv("ROOSTER_AGENT_MODEL", "gpt-6-luna")
+# Use a documented API model as the default; deployments can override it explicitly.
+DEFAULT_MODEL = os.getenv("ROOSTER_AGENT_MODEL", "gpt-4.1")
 MAX_ITERATIONS = 3
 MAX_READ_FILES = 8
 MAX_FILE_CHARS = 30000
@@ -155,7 +155,8 @@ class AutonomousCoder:
                     "test_evidence": verification_evidence,
                 }
             )
-            if success:
+            # A green test suite alone does not prove the requested change happened.
+            if success and changed > 0:
                 summary = self._summary_call(objective, evidence)
                 guard.audit.write(
                     "autonomous_task_completed",
@@ -181,7 +182,7 @@ class AutonomousCoder:
             objective,
             "stopped",
             len(evidence),
-            "Rooster stopped after its bounded autonomous loop without proving the requested outcome.",
+            "Rooster stopped without proving the requested outcome. Review the recorded test evidence; a passing test suite alone is not proof that the objective was achieved.",
             evidence,
         )
 
@@ -261,6 +262,7 @@ class AutonomousCoder:
                 result.append(safe_path)
 
         return result
+
     def _planning_prompt(self, objective: str, context: str, iteration: int) -> str:
         return f"""You are Rooster Autonomous Engineer.
 You are operating inside a guarded local software repository.
