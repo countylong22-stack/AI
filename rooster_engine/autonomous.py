@@ -432,9 +432,9 @@ Rules:
             "a passing test suite with objective completion. Compare the requested outcome with "
             "the actual changed file content and the test evidence. Be conservative: if evidence "
             "is incomplete, return objective_met=false. Return JSON only in this exact shape: "
-            '{"objective_met": true, "reason": "short explanation"}\\n'
-            f"Objective: {objective}\\nPatch intent: {intent}\\n"
-            f"Changed files and content previews: {json.dumps(changed_files, default=str)}\\n"
+            '{"objective_met": true, "reason": "short explanation"}\n'
+            f"Objective: {objective}\nPatch intent: {intent}\n"
+            f"Changed files and content previews: {json.dumps(changed_files, default=str)}\n"
             f"Fresh test evidence: {json.dumps(test_evidence, default=str)}"
         )
         result = self._json_call(prompt)
