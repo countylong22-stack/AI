@@ -394,8 +394,9 @@ Rules:
 - Make the smallest coherent change that advances the objective.
 - Return COMPLETE file contents, not diffs.
 - You may change ordinary application, integration, and test code, including app.py and mobile_server.py.
-- Never modify the security enforcement core: rooster_engine/guard.py, rooster_engine/command.py,
-  SECURITY.md, .github/workflows/*,
+- Never modify the security enforcement core: rooster_engine/guard.py, rooster_engine/core.py,
+  rooster_engine/command.py, rooster_engine/runtime.py, rooster_engine/verification.py,
+  rooster_engine/analysis.py, SECURITY.md, .github/workflows/*,
   credentials, secrets, or environment files.
 - Never add API keys or tokens.
 - Keep changes compatible with the existing architecture.
