@@ -50,16 +50,17 @@ class MobileServerTests(unittest.TestCase):
         request = mobile_server.ChatRequest(
             messages=[mobile_server.ChatMessage(role="user", content="Hello")]
         )
-        fake_response = SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content="Hi there"))]
-        )
+        fake_response = SimpleNamespace(output_text="Hi there")
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
             with patch("openai.OpenAI") as client_factory:
-                client_factory.return_value.chat.completions.create.return_value = fake_response
+                client_factory.return_value.responses.create.return_value = fake_response
                 result = mobile_server.chat(request)
         self.assertTrue(result["ok"])
         self.assertEqual(result["reply"], "Hi there")
-        client_factory.return_value.chat.completions.create.assert_called_once()
+        call = client_factory.return_value.responses.create.call_args.kwargs
+        self.assertEqual(call["model"], "gpt-6.1-sol")
+        self.assertEqual(call["reasoning"], {"effort": "medium"})
+        client_factory.return_value.responses.create.assert_called_once()
 
     def test_task_requires_api_key(self):
         request = mobile_server.TaskRequest(objective="Inspect the project")
