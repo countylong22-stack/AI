@@ -48,7 +48,7 @@ def _run_task(task_id: str, objective: str) -> None:
     with _tasks_lock:
         _tasks[task_id]["status"] = "running"
     try:
-        result = AutonomousCoder(engine, max_iterations=3).run(objective, task_id=task_id)
+        result = AutonomousCoder(engine).run(objective, task_id=task_id)
         with _tasks_lock:
             _tasks[task_id].update(
                 status=result.status,
