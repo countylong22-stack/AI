@@ -47,6 +47,8 @@ class AutonomousCoderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "sample.txt").write_text("old\n", encoding="utf-8")
+            (root / ".env").write_text("API_KEY=must-not-be-copied", encoding="utf-8")
+            (root / "secret.key").write_text("private-key", encoding="utf-8")
             tests_dir = root / "tests"
             tests_dir.mkdir()
             (tests_dir / "test_smoke.py").write_text(
@@ -60,6 +62,11 @@ class AutonomousCoderTests(unittest.TestCase):
             result = coder.run("update sample", task_id="test-task")
             self.assertEqual(result.status, "completed")
             self.assertEqual((root / "sample.txt").read_text(encoding="utf-8"), "updated\n")
+            checkpoint = Path(result.evidence[0]["checkpoint"])
+            self.assertTrue(checkpoint.is_dir())
+            self.assertEqual((checkpoint / "sample.txt").read_text(encoding="utf-8"), "old\n")
+            self.assertFalse((checkpoint / ".env").exists())
+            self.assertFalse((checkpoint / "secret.key").exists())
             self.assertGreaterEqual(client.calls, 3)
             audit = (root / ".rooster" / "audit.jsonl").read_text(encoding="utf-8")
             self.assertIn("autonomous_task_completed", audit)
