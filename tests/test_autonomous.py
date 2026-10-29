@@ -95,6 +95,35 @@ class AutonomousCoderTests(unittest.TestCase):
             audit = (root / ".rooster" / "audit.jsonl").read_text(encoding="utf-8")
             self.assertIn("autonomous_read_path_denied", audit)
 
+    def test_passing_tests_without_any_change_does_not_claim_completion(self):
+        class NoPatchClient(FakeResponsesClient):
+            def create(self, **kwargs):
+                self.calls += 1
+                prompt = kwargs["input"]
+                if '"patches"' in prompt:
+                    return self._response({"patches": [], "intent": "no change"})
+                if '"read_paths"' in prompt:
+                    return self._response({"read_paths": [], "approach": "inspect"})
+                return self._response({"summary": "done"})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tests_dir = root / "tests"
+            tests_dir.mkdir()
+            (tests_dir / "test_smoke.py").write_text(
+                "import unittest\\nclass SmokeTests(unittest.TestCase):\\n"
+                "    def test_smoke(self): self.assertTrue(True)\\n",
+                encoding="utf-8",
+            )
+            engineer = AutonomousEngineer(root, root / "tasks.json")
+            result = AutonomousCoder(
+                engineer, client=NoPatchClient(), max_iterations=1
+            ).run("make a meaningful improvement", task_id="no-change-task")
+
+            self.assertEqual(result.status, "stopped")
+            self.assertEqual(result.evidence[0]["files_changed"], 0)
+            self.assertTrue(result.evidence[0]["tests_passed"])
+
     def test_autonomous_cannot_write_protected_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
