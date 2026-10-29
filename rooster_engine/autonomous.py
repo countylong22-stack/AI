@@ -109,6 +109,7 @@ class AutonomousCoder:
                 )
 
             changed = 0
+            changed_files: list[dict[str, str]] = []
             for patch in patches:
                 guard.emergency_stop.check()
                 if not isinstance(patch, dict):
@@ -152,6 +153,7 @@ class AutonomousCoder:
                     task_id=task_id,
                 )
                 changed += 1
+                changed_files.append({"path": path, "content_preview": content[:5000]})
 
             test_action = Action(
                 "run_tests",
@@ -174,18 +176,31 @@ class AutonomousCoder:
                 task_id=task_id,
             )
             verification_evidence = getattr(verification, "evidence", {})
-            success = bool(getattr(verification, "success", False))
+            tests_passed = bool(getattr(verification, "success", False))
+            objective_check: dict[str, Any] = {"objective_met": False, "reason": "Tests did not pass or no files changed."}
+            if tests_passed and changed > 0:
+                objective_check = self._objective_check_call(
+                    objective=objective,
+                    changed_files=changed_files,
+                    intent=str(patch_request.get("intent", "")),
+                    test_evidence=verification_evidence,
+                )
+            objective_met = bool(objective_check.get("objective_met", False))
             evidence.append(
                 {
                     "iteration": iteration,
                     "files_changed": changed,
+                    "changed_paths": [item["path"] for item in changed_files],
                     "checkpoint": str(checkpoint_path) if checkpoint_path else None,
-                    "tests_passed": success,
+                    "tests_passed": tests_passed,
                     "test_evidence": verification_evidence,
+                    "objective_met": objective_met,
+                    "objective_check": objective_check.get("reason", ""),
                 }
             )
-            # A green test suite alone does not prove the requested change happened.
-            if success and changed > 0:
+            # Passing tests and changing a file are not enough: independently ask
+            # the model to compare the requested outcome with the actual changed content.
+            if tests_passed and changed > 0 and objective_met:
                 summary = self._summary_call(objective, evidence)
                 guard.audit.write(
                     "autonomous_task_completed",
@@ -402,6 +417,31 @@ Rules:
 - Keep changes compatible with the existing architecture.
 - Prefer tests when the objective is a code change.
 - Maximum {MAX_WRITE_FILES} files and {MAX_WRITE_CHARS} characters per file."""
+
+    def _objective_check_call(
+        self,
+        *,
+        objective: str,
+        changed_files: list[dict[str, str]],
+        intent: str,
+        test_evidence: Any,
+    ) -> dict[str, Any]:
+        """Check whether the requested outcome is evidenced by the actual patch and fresh tests."""
+        prompt = (
+            "Review whether this engineering objective was actually achieved. Do not equate "
+            "a passing test suite with objective completion. Compare the requested outcome with "
+            "the actual changed file content and the test evidence. Be conservative: if evidence "
+            "is incomplete, return objective_met=false. Return JSON only with keys "
+            "objective_met (boolean) and reason (short string).\\n"
+            f"Objective: {objective}\\nPatch intent: {intent}\\n"
+            f"Changed files and content previews: {json.dumps(changed_files, default=str)}\\n"
+            f"Fresh test evidence: {json.dumps(test_evidence, default=str)}"
+        )
+        result = self._json_call(prompt)
+        return {
+            "objective_met": result.get("objective_met") is True,
+            "reason": str(result.get("reason", ""))[:1000],
+        }
 
     def _summary_call(self, objective: str, evidence: list[dict[str, Any]]) -> str:
         prompt = (
