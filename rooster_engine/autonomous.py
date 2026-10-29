@@ -89,6 +89,20 @@ class AutonomousCoder:
                 raise RuntimeError("Autonomous model returned invalid patches.")
             patches = patches[:MAX_WRITE_FILES]
 
+            has_candidate_change = any(
+                isinstance(patch, dict)
+                and isinstance(patch.get("path"), str)
+                and bool(patch.get("path", "").strip())
+                and isinstance(patch.get("content"), str)
+                for patch in patches
+            )
+            checkpoint_path = None
+            if has_candidate_change:
+                guard.emergency_stop.check()
+                checkpoint_path = self.engineer.create_checkpoint(
+                    f"autonomous_{task_id}_iteration_{iteration}"
+                )
+
             changed = 0
             for patch in patches:
                 guard.emergency_stop.check()
@@ -151,6 +165,7 @@ class AutonomousCoder:
                 {
                     "iteration": iteration,
                     "files_changed": changed,
+                    "checkpoint": str(checkpoint_path) if checkpoint_path else None,
                     "tests_passed": success,
                     "test_evidence": verification_evidence,
                 }
