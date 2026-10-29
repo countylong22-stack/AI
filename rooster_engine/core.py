@@ -158,13 +158,30 @@ class Workspace:
             target = target.with_name(target.name + "_1")
 
         # Preserve symlinks rather than following them into unrelated locations.
+        # Exclude credential-like files so recovery copies do not multiply keys.
+        sensitive_names = {
+            ".git", ".rooster", "__pycache__", ".ssh", ".aws", ".azure",
+            "credentials", "secrets", "passwords", "tokens",
+        }
+        sensitive_suffixes = {".pem", ".key", ".p12", ".pfx", ".kdbx", ".pyc"}
+
+        def ignore_sensitive(_directory: str, names: list[str]) -> set[str]:
+            ignored: set[str] = set()
+            for name in names:
+                lowered = name.lower()
+                if (
+                    lowered in sensitive_names
+                    or lowered.startswith((".env", "credentials", "secrets", "password", "token"))
+                    or any(lowered.endswith(suffix) for suffix in sensitive_suffixes)
+                ):
+                    ignored.add(name)
+            return ignored
+
         shutil.copytree(
             self.root,
             target,
             symlinks=True,
-            ignore=shutil.ignore_patterns(
-                ".git", ".rooster", "__pycache__", "*.pyc"
-            ),
+            ignore=ignore_sensitive,
         )
         return target
 
