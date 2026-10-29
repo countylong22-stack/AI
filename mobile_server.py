@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import hmac
 import os
 import threading
 import uuid
@@ -38,7 +39,8 @@ class ChatRequest(BaseModel):
 def require_token(authorization: str | None = Header(default=None)) -> None:
     if not TOKEN:
         raise HTTPException(status_code=503, detail="Set ROOSTER_API_TOKEN on the Rooster computer first.")
-    if authorization != f"Bearer {TOKEN}":
+    expected = f"Bearer {TOKEN}"
+    if not hmac.compare_digest(authorization or "", expected):
         raise HTTPException(status_code=401, detail="Invalid Rooster API token.")
 
 
