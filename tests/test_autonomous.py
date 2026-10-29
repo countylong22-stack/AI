@@ -32,6 +32,8 @@ class FakeResponsesClient(FakeClient):
     def create(self, **kwargs):
         self.calls += 1
         prompt = kwargs["input"]
+        if '"objective_met"' in prompt:
+            return self._response({"objective_met": True, "reason": "Objective is supported by the changed content and test evidence."})
         if '"patches"' in prompt:
             return self._response({
                 "patches": [{"path": "sample.txt", "content": "updated\n"}],
@@ -103,6 +105,45 @@ class AutonomousCoderTests(unittest.TestCase):
             audit = (root / ".rooster" / "audit.jsonl").read_text(encoding="utf-8")
             self.assertIn("autonomous_task_completed", audit)
             self.assertIn("project_file_written", audit)
+
+    def test_passing_tests_do_not_complete_task_when_objective_check_fails(self):
+        class ObjectiveNotMetClient(FakeResponsesClient):
+            def create(self, **kwargs):
+                self.calls += 1
+                prompt = kwargs["input"]
+                if '"objective_met"' in prompt:
+                    return self._response({
+                        "objective_met": False,
+                        "reason": "The changed content does not meet the requested objective.",
+                    })
+                if '"patches"' in prompt:
+                    return self._response({
+                        "patches": [{"path": "sample.txt", "content": "changed\\n"}],
+                        "intent": "change sample",
+                    })
+                if '"read_paths"' in prompt:
+                    return self._response({"read_paths": ["sample.txt"], "approach": "inspect sample"})
+                return self._response({"summary": "done"})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "sample.txt").write_text("old\\n", encoding="utf-8")
+            tests_dir = root / "tests"
+            tests_dir.mkdir()
+            (tests_dir / "test_smoke.py").write_text(
+                "import unittest\\nclass SmokeTests(unittest.TestCase):\\n"
+                "    def test_smoke(self): self.assertTrue(True)\\n",
+                encoding="utf-8",
+            )
+            engineer = AutonomousEngineer(root, root / "tasks.json")
+            result = AutonomousCoder(
+                engineer, client=ObjectiveNotMetClient(), max_iterations=1
+            ).run("implement an objective the patch does not satisfy", task_id="objective-check")
+
+            self.assertEqual(result.status, "stopped")
+            self.assertTrue(result.evidence[0]["tests_passed"])
+            self.assertFalse(result.evidence[0]["objective_met"])
+            self.assertIn("does not meet", result.evidence[0]["objective_check"])
 
     def test_autonomous_read_filter_blocks_secrets_and_protected_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
