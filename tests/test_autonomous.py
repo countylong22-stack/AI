@@ -131,6 +131,32 @@ class AutonomousCoderTests(unittest.TestCase):
             self.assertEqual(result.evidence[0]["files_changed"], 0)
             self.assertTrue(result.evidence[0]["tests_passed"])
 
+    def test_autonomous_write_filter_blocks_secrets_metadata_and_traversal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "sample.txt").write_text("safe", encoding="utf-8")
+            (root / ".env").write_text("API_KEY=do-not-overwrite", encoding="utf-8")
+            (root / ".git").mkdir()
+            (root / ".github" / "workflows").mkdir(parents=True)
+            engineer = AutonomousEngineer(root, root / "tasks.json")
+            coder = AutonomousCoder(engineer, client=FakeResponsesClient(), max_iterations=1)
+
+            self.assertEqual(coder._safe_write_path("sample.txt"), "sample.txt")
+            for path in (
+                ".env",
+                ".env.production",
+                ".git/config",
+                ".rooster/audit.jsonl",
+                ".github/workflows/deploy.yml",
+                "rooster_engine/guard.py",
+                "../outside.txt",
+                str(root / "sample.txt"),
+                "private.key",
+                "tokens/access.json",
+            ):
+                with self.subTest(path=path):
+                    self.assertIsNone(coder._safe_write_path(path))
+
     def test_autonomous_cannot_write_protected_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
