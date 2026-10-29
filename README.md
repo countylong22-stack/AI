@@ -2,6 +2,12 @@
 
 Rooster v2 is a guarded autonomous engineering workspace for Windows and Python. It adds a policy boundary between the agent and its tools so autonomy is observable, interruptible, and approval-gated where risk increases.
 
+## Proprietary licensing
+
+Rooster Autonomous Engineer is intended to be distributed as proprietary software. Unless a separate written license signed by the rights holder says otherwise, no permission is granted to copy, modify, redistribute, sublicense, or sell this source code or derivative works. Access to a repository or download is not itself a commercial license.
+
+For paid use, redistribution, source-code access, or business deployment, obtain a written commercial license from the rights holder first. This notice is not a payment processor or access-control mechanism. Keep the GitHub repository private and distribute builds only through a controlled customer channel. Code already cloned, forked, or downloaded while the repository was public cannot reliably be recalled by changing visibility. This notice is a starting point, not legal advice; have a qualified attorney review the commercial terms before selling licenses.
+
 ## v2 capabilities
 
 - **RoosterGuard** — every tool action is checked against an explicit permission and risk policy.
