@@ -43,6 +43,38 @@ class FakeResponsesClient(FakeClient):
 
 
 class AutonomousCoderTests(unittest.TestCase):
+    def test_invalid_json_gets_one_repair_attempt(self):
+        class MalformedThenValidClient(FakeResponsesClient):
+            def __init__(self):
+                super().__init__()
+                self.inputs = []
+
+            def create(self, **kwargs):
+                self.calls += 1
+                self.inputs.append(kwargs["input"])
+                if self.calls == 1:
+                    return FakeResponse("not json")
+                return self._response({"read_paths": ["sample.py"]})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            engineer = AutonomousEngineer(tmp, Path(tmp) / "tasks.json")
+            client = MalformedThenValidClient()
+            coder = AutonomousCoder(engineer, client=client, max_iterations=1)
+            result = coder._json_call("Return a JSON object.")
+            self.assertEqual(result, {"read_paths": ["sample.py"]})
+            self.assertEqual(client.calls, 2)
+            self.assertIn("previous response was not valid JSON", client.inputs[1])
+
+    def test_planner_receives_previous_failure_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            engineer = AutonomousEngineer(tmp, Path(tmp) / "tasks.json")
+            coder = AutonomousCoder(engineer, client=FakeResponsesClient(), max_iterations=2)
+            prompt = coder._planning_prompt(
+                "fix failing test", "inventory", 2,
+                [{"iteration": 1, "tests_passed": False, "test_evidence": "AssertionError"}],
+            )
+            self.assertIn("AssertionError", prompt)
+            self.assertIn("do not repeat a failed approach blindly", prompt)
     def test_autonomous_write_is_guarded_and_tested(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
