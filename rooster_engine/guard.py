@@ -5,6 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 import hashlib
+import hmac
 import json
 import threading
 from datetime import datetime, timedelta, timezone
@@ -106,7 +107,7 @@ class AuditLog:
                     record, sort_keys=True, separators=(",", ":"), default=str
                 ).encode("utf-8")
                 expected_hash = hashlib.sha256(payload).hexdigest()
-                if not __import__("hmac").compare_digest(recorded_hash, expected_hash):
+                if not hmac.compare_digest(recorded_hash, expected_hash):
                     raise ValueError("record_hash does not match record contents")
                 previous_hash = recorded_hash
                 records += 1
