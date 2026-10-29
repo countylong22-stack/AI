@@ -16,7 +16,7 @@ For paid use, redistribution, source-code access, or business deployment, obtain
 - **Sandboxing** — automated file writes are restricted to `.rooster/sandbox`; path traversal and symlink escapes are rejected.
 - **Checkpoints** — recovery snapshots are created before engineering work; Git metadata and Rooster runtime state are excluded and symlinks are preserved.
 - **Emergency stop** — immediately blocks guarded actions until the operator explicitly resets it.
-- **Audit logging** — JSONL records task, authorization, approval, action, failure, checkpoint, and stop events using a hash chain.
+- **Audit logging** — JSONL records task, authorization, approval, action, failure, checkpoint, and stop events using a hash chain that is verified before new entries are appended; tampered logs fail closed.
 - **Reason → Action → Evidence** — each task records why it is being done, what will be done, and what evidence should prove success.
 - **Persistent task memory** — task state survives application restarts with atomic replacement.
 - **Desktop GUI** — live activity, task history, checkpoint control, and emergency-stop controls.
