@@ -5,6 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 import hashlib
+import hmac
 import json
 import threading
 from datetime import datetime, timedelta, timezone
@@ -71,7 +72,7 @@ class EmergencyStop:
 
 
 class AuditLog:
-    """Thread-safe JSONL audit log with a tamper-evident hash chain."""
+    """Thread-safe JSONL audit log with a verified, tamper-evident hash chain."""
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path).expanduser()
@@ -79,16 +80,60 @@ class AuditLog:
         self._lock = threading.Lock()
         self._previous_hash = self._load_previous_hash()
 
-    def _load_previous_hash(self) -> str:
+    def _verify_file(self) -> dict[str, Any]:
+        """Verify every record before appending; never silently restart a broken chain."""
         if not self.path.exists():
-            return ""
+            return {"valid": True, "records": 0, "last_hash": "", "broken_at": None, "reason": None}
+
+        previous_hash = ""
+        records = 0
         try:
             lines = self.path.read_text(encoding="utf-8").splitlines()
-            if not lines:
-                return ""
-            return str(json.loads(lines[-1]).get("record_hash", ""))
-        except (OSError, ValueError, TypeError):
-            return ""
+        except OSError as exc:
+            return {"valid": False, "records": 0, "last_hash": "", "broken_at": 1,
+                    "reason": f"audit_log_unreadable: {exc}"}
+
+        for line_number, line in enumerate(lines, start=1):
+            try:
+                record = json.loads(line)
+                if not isinstance(record, dict):
+                    raise ValueError("record is not a JSON object")
+                recorded_hash = record.pop("record_hash", None)
+                if not isinstance(recorded_hash, str) or not recorded_hash:
+                    raise ValueError("missing record_hash")
+                if record.get("previous_hash", "") != previous_hash:
+                    raise ValueError("previous_hash does not match the preceding record")
+                payload = json.dumps(
+                    record, sort_keys=True, separators=(",", ":"), default=str
+                ).encode("utf-8")
+                expected_hash = hashlib.sha256(payload).hexdigest()
+                if not hmac.compare_digest(recorded_hash, expected_hash):
+                    raise ValueError("record_hash does not match record contents")
+                previous_hash = recorded_hash
+                records += 1
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return {"valid": False, "records": records, "last_hash": previous_hash,
+                        "broken_at": line_number, "reason": str(exc)}
+
+        return {"valid": True, "records": records, "last_hash": previous_hash,
+                "broken_at": None, "reason": None}
+
+    def verify_chain(self) -> dict[str, Any]:
+        """Return an integrity report without changing the audit log."""
+        with self._lock:
+            report = self._verify_file()
+            report.pop("last_hash", None)
+            return report
+
+    def _load_previous_hash(self) -> str:
+        report = self._verify_file()
+        if not report["valid"]:
+            raise ValueError(
+                "Rooster audit log integrity check failed at line "
+                f"{report['broken_at']}: {report['reason']}. "
+                "Refusing to append to a potentially tampered audit log."
+            )
+        return str(report["last_hash"])
 
     def write(self, event: str, **data: Any) -> None:
         with self._lock:
@@ -102,9 +147,9 @@ class AuditLog:
                 record, sort_keys=True, separators=(",", ":"), default=str
             ).encode("utf-8")
             record["record_hash"] = hashlib.sha256(payload).hexdigest()
-            self._previous_hash = record["record_hash"]
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record, sort_keys=True, default=str) + "\n")
+            self._previous_hash = record["record_hash"]
 
 
 class RoosterGuard:
@@ -271,7 +316,6 @@ class RoosterGuard:
         "rooster_engine/runtime.py",
         "rooster_engine/verification.py",
         "rooster_engine/analysis.py",
-        "app.py",
         ".github/workflows/*",
         "SECURITY.md",
     )

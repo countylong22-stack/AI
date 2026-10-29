@@ -2,6 +2,12 @@
 
 Rooster v2 is a guarded autonomous engineering workspace for Windows and Python. It adds a policy boundary between the agent and its tools so autonomy is observable, interruptible, and approval-gated where risk increases.
 
+## Proprietary licensing
+
+Rooster Autonomous Engineer is intended to be distributed as proprietary software. Unless a separate written license signed by the rights holder says otherwise, no permission is granted to copy, modify, redistribute, sublicense, or sell this source code or derivative works. Access to a repository or download is not itself a commercial license.
+
+For paid use, redistribution, source-code access, or business deployment, obtain a written commercial license from the rights holder first. This notice is not a payment processor or access-control mechanism. Keep the GitHub repository private and distribute builds only through a controlled customer channel. Code already cloned, forked, or downloaded while the repository was public cannot reliably be recalled by changing visibility. This notice is a starting point, not legal advice; have a qualified attorney review the commercial terms before selling licenses.
+
 ## v2 capabilities
 
 - **RoosterGuard** — every tool action is checked against an explicit permission and risk policy.
@@ -10,12 +16,13 @@ Rooster v2 is a guarded autonomous engineering workspace for Windows and Python.
 - **Sandboxing** — automated file writes are restricted to `.rooster/sandbox`; path traversal and symlink escapes are rejected.
 - **Checkpoints** — recovery snapshots are created before engineering work; Git metadata and Rooster runtime state are excluded and symlinks are preserved.
 - **Emergency stop** — immediately blocks guarded actions until the operator explicitly resets it.
-- **Audit logging** — JSONL records task, authorization, approval, action, failure, checkpoint, and stop events using a hash chain.
+- **Audit logging** — JSONL records task, authorization, approval, action, failure, checkpoint, and stop events using a hash chain that is verified before new entries are appended; tampered logs fail closed.
 - **Reason → Action → Evidence** — each task records why it is being done, what will be done, and what evidence should prove success.
 - **Persistent task memory** — task state survives application restarts with atomic replacement.
 - **Desktop GUI** — live activity, task history, checkpoint control, and emergency-stop controls.
+- **Engineering-only interface** — the desktop app exposes guarded autonomous engineering, workspace inspection, task history, verification, and emergency-stop controls. Video editing and media-generation actions are not part of the app or tool registry.
 - **Windows app build** — GitHub Actions automatically builds a standalone `Rooster Autonomous Engineer.exe` for Windows.
-- **Android mobile companion** — an Android app can connect to the Rooster computer for status and emergency-stop control.
+- **Android mobile companion** — authenticated chat, voice input/output, PC status, autonomous task submission/progress, and emergency-stop control.
 
 ## Safety boundary
 
@@ -35,6 +42,16 @@ python app.py
 python -m unittest discover -s tests -v
 ```
 
+The deterministic behavioral safety evaluations are also included in the unit-test suite. To run only those cases:
+
+```powershell
+python -m unittest discover -s tests -p "test_behavioral_evals.py" -v
+```
+
+## Dependency security
+
+GitHub Actions runs a scheduled `pip-audit` scan against the resolved application dependencies, and Dependabot proposes weekly updates for Python packages and GitHub Actions. A reported vulnerability blocks that audit run and should be triaged before release. These controls identify known vulnerabilities but do not replace a fully pinned, hash-verified release lockfile; reproducible dependency locking remains a release-readiness item.
+
 ## Build Windows EXE locally
 
 ```powershell
@@ -45,14 +62,19 @@ The build produces `dist\Rooster Autonomous Engineer.exe`.
 
 ## Android mobile companion
 
-The Android project is under `mobile/`. The companion currently provides:
+The Android project is under `mobile/`. The companion provides chat, speech-to-text, spoken replies, authenticated PC status, autonomous task submission/progress, and emergency stop/reset. Engineering work runs on the Rooster computer through the guarded agent; ordinary chat alone does not execute tasks.
 
-- Rooster computer connection settings
-- authenticated status checking
-- emergency stop
-- emergency-stop reset
+### Agent model and autonomy settings
 
-The phone app intentionally does **not** expose arbitrary engineering execution. Engineering work remains on the Rooster computer behind RoosterGuard.
+The autonomous coding agent defaults to the documented `gpt-6.1-sol` model with high reasoning effort. Mobile chat uses the Responses API with `gpt-6.1-sol` and medium reasoning effort. These are configurable with environment variables:
+
+- `ROOSTER_AGENT_MODEL` — coding-agent model ID
+- `ROOSTER_REASONING_EFFORT` — coding reasoning effort: `low`, `medium`, `high`, `xhigh`, or `max`
+- `ROOSTER_CHAT_MODEL` — mobile-chat model ID
+- `ROOSTER_CHAT_REASONING_EFFORT` — mobile-chat reasoning effort
+- `ROOSTER_MAX_ITERATIONS` — autonomous coding iterations, 1–10 (default 5)
+
+The agent carries recent test evidence into later attempts and makes one formatting-repair retry for invalid JSON. Increasing iteration or reasoning settings can increase runtime and API cost. Rooster still keeps checkpoints, audit logs, protected security code, bounded file changes, and the emergency stop.
 
 ### Build the APK
 

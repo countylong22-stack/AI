@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - v2/rooster-guard
+      - 'feature/**'
   workflow_dispatch:
 
 permissions:

@@ -13,6 +13,15 @@ class CommandExecutorTests(unittest.TestCase):
         guard = RoosterGuard(root, root / ".rooster" / "audit.jsonl")
         return CommandExecutor(guard, **kwargs), guard
 
+    def test_executable_paths_cannot_bypass_allowlist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            executor, _ = self._executor(tmp, allowed_commands={"python"})
+            for executable in ("/tmp/python", r"C:\\temp\\python.exe", "../python"):
+                with self.subTest(executable=executable):
+                    with self.assertRaises(PermissionError):
+                        executor.run([executable, "-m", "unittest"],
+                                     reason="path allowlist test", evidence="deny path")
+
     def test_non_allowlisted_command_is_denied(self):
         with tempfile.TemporaryDirectory() as tmp:
             executor, _ = self._executor(tmp, allowed_commands={"python"})

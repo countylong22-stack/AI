@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - v2/rooster-guard
+      - 'feature/**'
+  pull_request:
+    branches:
+      - v2/rooster-guard
   workflow_dispatch:
 
 permissions:
@@ -21,6 +25,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
       - name: Install required Android SDK packages
         shell: bash

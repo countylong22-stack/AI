@@ -32,6 +32,8 @@ class FakeResponsesClient(FakeClient):
     def create(self, **kwargs):
         self.calls += 1
         prompt = kwargs["input"]
+        if '"objective_met"' in prompt:
+            return self._response({"objective_met": True, "reason": "Objective is supported by the changed content and test evidence."})
         if '"patches"' in prompt:
             return self._response({
                 "patches": [{"path": "sample.txt", "content": "updated\n"}],
@@ -43,10 +45,44 @@ class FakeResponsesClient(FakeClient):
 
 
 class AutonomousCoderTests(unittest.TestCase):
+    def test_invalid_json_gets_one_repair_attempt(self):
+        class MalformedThenValidClient(FakeResponsesClient):
+            def __init__(self):
+                super().__init__()
+                self.inputs = []
+
+            def create(self, **kwargs):
+                self.calls += 1
+                self.inputs.append(kwargs["input"])
+                if self.calls == 1:
+                    return FakeResponse("not json")
+                return self._response({"read_paths": ["sample.py"]})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            engineer = AutonomousEngineer(tmp, Path(tmp) / "tasks.json")
+            client = MalformedThenValidClient()
+            coder = AutonomousCoder(engineer, client=client, max_iterations=1)
+            result = coder._json_call("Return a JSON object.")
+            self.assertEqual(result, {"read_paths": ["sample.py"]})
+            self.assertEqual(client.calls, 2)
+            self.assertIn("previous response was not valid JSON", client.inputs[1])
+
+    def test_planner_receives_previous_failure_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            engineer = AutonomousEngineer(tmp, Path(tmp) / "tasks.json")
+            coder = AutonomousCoder(engineer, client=FakeResponsesClient(), max_iterations=2)
+            prompt = coder._planning_prompt(
+                "fix failing test", "inventory", 2,
+                [{"iteration": 1, "tests_passed": False, "test_evidence": "AssertionError"}],
+            )
+            self.assertIn("AssertionError", prompt)
+            self.assertIn("do not repeat a failed approach blindly", prompt)
     def test_autonomous_write_is_guarded_and_tested(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "sample.txt").write_text("old\n", encoding="utf-8")
+            (root / ".env").write_text("API_KEY=must-not-be-copied", encoding="utf-8")
+            (root / "secret.key").write_text("private-key", encoding="utf-8")
             tests_dir = root / "tests"
             tests_dir.mkdir()
             (tests_dir / "test_smoke.py").write_text(
@@ -60,10 +96,139 @@ class AutonomousCoderTests(unittest.TestCase):
             result = coder.run("update sample", task_id="test-task")
             self.assertEqual(result.status, "completed")
             self.assertEqual((root / "sample.txt").read_text(encoding="utf-8"), "updated\n")
+            checkpoint = Path(result.evidence[0]["checkpoint"])
+            self.assertTrue(checkpoint.is_dir())
+            self.assertEqual((checkpoint / "sample.txt").read_text(encoding="utf-8"), "old\n")
+            self.assertFalse((checkpoint / ".env").exists())
+            self.assertFalse((checkpoint / "secret.key").exists())
             self.assertGreaterEqual(client.calls, 3)
             audit = (root / ".rooster" / "audit.jsonl").read_text(encoding="utf-8")
             self.assertIn("autonomous_task_completed", audit)
             self.assertIn("project_file_written", audit)
+
+    def test_passing_tests_do_not_complete_task_when_objective_check_fails(self):
+        class ObjectiveNotMetClient(FakeResponsesClient):
+            def create(self, **kwargs):
+                self.calls += 1
+                prompt = kwargs["input"]
+                if '"objective_met"' in prompt:
+                    return self._response({
+                        "objective_met": False,
+                        "reason": "The changed content does not meet the requested objective.",
+                    })
+                if '"patches"' in prompt:
+                    return self._response({
+                        "patches": [{"path": "sample.txt", "content": "changed\n"}],
+                        "intent": "change sample",
+                    })
+                if '"read_paths"' in prompt:
+                    return self._response({"read_paths": ["sample.txt"], "approach": "inspect sample"})
+                return self._response({"summary": "done"})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "sample.txt").write_text("old\n", encoding="utf-8")
+            tests_dir = root / "tests"
+            tests_dir.mkdir()
+            (tests_dir / "test_smoke.py").write_text(
+                "import unittest\nclass SmokeTests(unittest.TestCase):\n"
+                "    def test_smoke(self): self.assertTrue(True)\n",
+                encoding="utf-8",
+            )
+            engineer = AutonomousEngineer(root, root / "tasks.json")
+            result = AutonomousCoder(
+                engineer, client=ObjectiveNotMetClient(), max_iterations=1
+            ).run("implement an objective the patch does not satisfy", task_id="objective-check")
+
+            self.assertEqual(result.status, "stopped")
+            self.assertTrue(result.evidence[0]["tests_passed"])
+            self.assertFalse(result.evidence[0]["objective_met"])
+            self.assertIn("does not meet", result.evidence[0]["objective_check"])
+
+    def test_autonomous_read_filter_blocks_secrets_and_protected_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "sample.txt").write_text("safe", encoding="utf-8")
+            (root / ".env").write_text("API_KEY=do-not-read", encoding="utf-8")
+            (root / "secrets.txt").write_text("private", encoding="utf-8")
+            protected = root / "rooster_engine"
+            protected.mkdir()
+            (protected / "guard.py").write_text("protected", encoding="utf-8")
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            (workflows / "deploy.yml").write_text("protected", encoding="utf-8")
+
+            engineer = AutonomousEngineer(root, root / "tasks.json")
+            coder = AutonomousCoder(engineer, client=FakeResponsesClient(), max_iterations=1)
+            safe = coder._safe_read_paths([
+                "sample.txt",
+                ".env",
+                "secrets.txt",
+                "rooster_engine/guard.py",
+                ".github/workflows/deploy.yml",
+                "../outside.txt",
+                str(root / "sample.txt"),
+                "missing.txt",
+            ])
+
+            self.assertEqual(safe, ["sample.txt"])
+            audit = (root / ".rooster" / "audit.jsonl").read_text(encoding="utf-8")
+            self.assertIn("autonomous_read_path_denied", audit)
+
+    def test_passing_tests_without_any_change_does_not_claim_completion(self):
+        class NoPatchClient(FakeResponsesClient):
+            def create(self, **kwargs):
+                self.calls += 1
+                prompt = kwargs["input"]
+                if '"patches"' in prompt:
+                    return self._response({"patches": [], "intent": "no change"})
+                if '"read_paths"' in prompt:
+                    return self._response({"read_paths": [], "approach": "inspect"})
+                return self._response({"summary": "done"})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tests_dir = root / "tests"
+            tests_dir.mkdir()
+            (tests_dir / "test_smoke.py").write_text(
+                "import unittest\nclass SmokeTests(unittest.TestCase):\n"
+                "    def test_smoke(self): self.assertTrue(True)\n",
+                encoding="utf-8",
+            )
+            engineer = AutonomousEngineer(root, root / "tasks.json")
+            result = AutonomousCoder(
+                engineer, client=NoPatchClient(), max_iterations=1
+            ).run("make a meaningful improvement", task_id="no-change-task")
+
+            self.assertEqual(result.status, "stopped")
+            self.assertEqual(result.evidence[0]["files_changed"], 0)
+            self.assertTrue(result.evidence[0]["tests_passed"])
+
+    def test_autonomous_write_filter_blocks_secrets_metadata_and_traversal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "sample.txt").write_text("safe", encoding="utf-8")
+            (root / ".env").write_text("API_KEY=do-not-overwrite", encoding="utf-8")
+            (root / ".git").mkdir()
+            (root / ".github" / "workflows").mkdir(parents=True)
+            engineer = AutonomousEngineer(root, root / "tasks.json")
+            coder = AutonomousCoder(engineer, client=FakeResponsesClient(), max_iterations=1)
+
+            self.assertEqual(coder._safe_write_path("sample.txt"), "sample.txt")
+            for path in (
+                ".env",
+                ".env.production",
+                ".git/config",
+                ".rooster/audit.jsonl",
+                ".github/workflows/deploy.yml",
+                "rooster_engine/guard.py",
+                "../outside.txt",
+                str(root / "sample.txt"),
+                "private.key",
+                "tokens/access.json",
+            ):
+                with self.subTest(path=path):
+                    self.assertIsNone(coder._safe_write_path(path))
 
     def test_autonomous_cannot_write_protected_file(self):
         with tempfile.TemporaryDirectory() as tmp:

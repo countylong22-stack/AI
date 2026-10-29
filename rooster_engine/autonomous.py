@@ -17,15 +17,16 @@ from openai import OpenAI
 
 from .core import AutonomousEngineer
 from .guard import Action, Risk
-from .runtime import RuntimeLimits
 
 
-DEFAULT_MODEL = os.getenv("ROOSTER_AGENT_MODEL", "gpt-6-luna")
-MAX_ITERATIONS = 3
-MAX_READ_FILES = 8
-MAX_FILE_CHARS = 30000
-MAX_WRITE_FILES = 6
-MAX_WRITE_CHARS = 100000
+# Use a documented API model as the default; deployments can override it explicitly.
+DEFAULT_MODEL = os.getenv("ROOSTER_AGENT_MODEL", "gpt-6.1-sol")
+DEFAULT_REASONING_EFFORT = os.getenv("ROOSTER_REASONING_EFFORT", "high")
+DEFAULT_MAX_ITERATIONS = int(os.getenv("ROOSTER_MAX_ITERATIONS", "5"))
+MAX_READ_FILES = 12
+MAX_FILE_CHARS = 40000
+MAX_WRITE_FILES = 10
+MAX_WRITE_CHARS = 150000
 
 
 @dataclass
@@ -47,12 +48,15 @@ class AutonomousCoder:
         *,
         model: str = DEFAULT_MODEL,
         client: OpenAI | None = None,
-        max_iterations: int = MAX_ITERATIONS,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS,
     ) -> None:
         if max_iterations < 1 or max_iterations > 10:
             raise ValueError("max_iterations must be between 1 and 10.")
         self.engineer = engineer
         self.model = model
+        self.reasoning_effort = DEFAULT_REASONING_EFFORT
+        if self.reasoning_effort not in {"low", "medium", "high", "xhigh", "max"}:
+            raise ValueError("ROOSTER_REASONING_EFFORT must be low, medium, high, xhigh, or max.")
         self.client = client or OpenAI()
         self.max_iterations = max_iterations
 
@@ -69,8 +73,9 @@ class AutonomousCoder:
             guard.emergency_stop.check()
             inventory = self.engineer.workspace.inspect(limit=100)
             context = self._planning_context(inventory)
+            prior_evidence = evidence[-3:]
             plan = self._json_call(
-                self._planning_prompt(objective, context, iteration)
+                self._planning_prompt(objective, context, iteration, prior_evidence)
             )
             read_paths = self._safe_read_paths(plan.get("read_paths", []))
 
@@ -82,21 +87,45 @@ class AutonomousCoder:
                 )
 
             patch_request = self._json_call(
-                self._patch_prompt(objective, iteration, context, files, plan)
+                self._patch_prompt(objective, iteration, context, files, plan, prior_evidence)
             )
             patches = patch_request.get("patches", [])
             if not isinstance(patches, list):
                 raise RuntimeError("Autonomous model returned invalid patches.")
             patches = patches[:MAX_WRITE_FILES]
 
+            has_candidate_change = any(
+                isinstance(patch, dict)
+                and isinstance(patch.get("path"), str)
+                and bool(patch.get("path", "").strip())
+                and isinstance(patch.get("content"), str)
+                for patch in patches
+            )
+            checkpoint_path = None
+            if has_candidate_change:
+                guard.emergency_stop.check()
+                checkpoint_path = self.engineer.create_checkpoint(
+                    f"autonomous_{task_id}_iteration_{iteration}"
+                )
+
             changed = 0
+            changed_files: list[dict[str, str]] = []
             for patch in patches:
                 guard.emergency_stop.check()
                 if not isinstance(patch, dict):
                     continue
-                path = str(patch.get("path", "")).strip()
+                requested_path = str(patch.get("path", "")).strip()
+                path = self._safe_write_path(requested_path)
                 content = patch.get("content")
-                if not path or not isinstance(content, str):
+                if not isinstance(content, str):
+                    continue
+                if path is None:
+                    guard.audit.write(
+                        "autonomous_write_path_denied",
+                        task_id=task_id,
+                        requested_path=requested_path,
+                        reason="sensitive_protected_or_escaping_path",
+                    )
                     continue
                 if len(content) > MAX_WRITE_CHARS:
                     raise RuntimeError(f"Autonomous patch is too large: {path}")
@@ -124,6 +153,7 @@ class AutonomousCoder:
                     task_id=task_id,
                 )
                 changed += 1
+                changed_files.append({"path": path, "content_preview": content[:5000]})
 
             test_action = Action(
                 "run_tests",
@@ -146,16 +176,31 @@ class AutonomousCoder:
                 task_id=task_id,
             )
             verification_evidence = getattr(verification, "evidence", {})
-            success = bool(getattr(verification, "success", False))
+            tests_passed = bool(getattr(verification, "success", False))
+            objective_check: dict[str, Any] = {"objective_met": False, "reason": "Tests did not pass or no files changed."}
+            if tests_passed and changed > 0:
+                objective_check = self._objective_check_call(
+                    objective=objective,
+                    changed_files=changed_files,
+                    intent=str(patch_request.get("intent", "")),
+                    test_evidence=verification_evidence,
+                )
+            objective_met = bool(objective_check.get("objective_met", False))
             evidence.append(
                 {
                     "iteration": iteration,
                     "files_changed": changed,
-                    "tests_passed": success,
+                    "changed_paths": [item["path"] for item in changed_files],
+                    "checkpoint": str(checkpoint_path) if checkpoint_path else None,
+                    "tests_passed": tests_passed,
                     "test_evidence": verification_evidence,
+                    "objective_met": objective_met,
+                    "objective_check": objective_check.get("reason", ""),
                 }
             )
-            if success:
+            # Passing tests and changing a file are not enough: independently ask
+            # the model to compare the requested outcome with the actual changed content.
+            if tests_passed and changed > 0 and objective_met:
                 summary = self._summary_call(objective, evidence)
                 guard.audit.write(
                     "autonomous_task_completed",
@@ -181,7 +226,7 @@ class AutonomousCoder:
             objective,
             "stopped",
             len(evidence),
-            "Rooster stopped after its bounded autonomous loop without proving the requested outcome.",
+            "Rooster stopped without proving the requested outcome. Review the recorded test evidence; a passing test suite alone is not proof that the objective was achieved.",
             evidence,
         )
 
@@ -189,21 +234,140 @@ class AutonomousCoder:
     def _planning_context(inventory: list[dict[str, Any]]) -> str:
         return json.dumps(inventory[:100], indent=2)
 
-    @staticmethod
-    def _safe_read_paths(paths: Any) -> list[str]:
+    def _safe_write_path(self, value: Any) -> str | None:
+        """Reject secret/configuration paths, traversal, symlinks, and protected files."""
+        if not isinstance(value, str) or not value.strip():
+            return None
+
+        raw = value.strip().replace("\\", "/")
+        relative = Path(raw)
+        if relative.is_absolute() or ".." in relative.parts:
+            return None
+
+        normalized = relative.as_posix()
+        if normalized.startswith("./"):
+            normalized = normalized[2:]
+        lowered_parts = [part.lower() for part in Path(normalized).parts]
+        blocked_names = {
+            ".git", ".rooster", ".ssh", ".aws", ".azure",
+            "credentials", "credential", "secrets", "secret",
+            "passwords", "password", "tokens", "token",
+        }
+        blocked_suffixes = {".pem", ".key", ".p12", ".pfx", ".kdbx"}
+        if not normalized or any(
+            part in blocked_names
+            or part.startswith((".env", "secret", "credential", "password", "token", "api_key"))
+            for part in lowered_parts
+        ):
+            return None
+        if ".github" in lowered_parts and "workflows" in lowered_parts:
+            return None
+        if Path(normalized).suffix.lower() in blocked_suffixes:
+            return None
+        if self.engineer.guard.protected_path(normalized) is not None:
+            return None
+
+        root = self.engineer.workspace.root.resolve()
+        candidate = root / Path(normalized)
+        # Do not follow symlinks for autonomous writes. This avoids surprising writes
+        # through links even when their destination remains inside the repository.
+        cursor = root
+        for part in Path(normalized).parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                return None
+        resolved = candidate.resolve(strict=False)
+        if resolved == root or root not in resolved.parents:
+            return None
+        return Path(normalized).as_posix()
+
+    def _safe_read_paths(self, paths: Any) -> list[str]:
+        """Accept only existing, workspace-contained, non-sensitive project files."""
         if not isinstance(paths, list):
             return []
+
+        root = self.engineer.workspace.root.resolve()
+        blocked_names = {
+            ".git", ".rooster", ".ssh", ".aws", ".azure",
+            "credentials", "credential", "secrets", "secret",
+            "passwords", "password", "tokens", "token",
+        }
+        blocked_files = {
+            "security.md",
+            "rooster_engine/guard.py", "rooster_engine/core.py",
+            "rooster_engine/command.py", "rooster_engine/runtime.py",
+            "rooster_engine/verification.py", "rooster_engine/analysis.py",
+        }
+        blocked_suffixes = {".pem", ".key", ".p12", ".pfx", ".kdbx"}
         result: list[str] = []
-        for value in paths[:MAX_READ_FILES]:
-            if isinstance(value, str) and value.strip():
-                result.append(value.strip())
+
+        for value in paths:
+            if len(result) >= MAX_READ_FILES:
+                break
+            if not isinstance(value, str) or not value.strip():
+                continue
+
+            raw = value.strip().replace("\\", "/")
+            relative = Path(raw)
+            normalized = relative.as_posix()
+            if normalized.startswith("./"):
+                normalized = normalized[2:]
+            normalized = normalized.lower()
+            parts = [part.lower() for part in relative.parts]
+            denied_reason = ""
+            if relative.is_absolute() or ".." in relative.parts:
+                denied_reason = "absolute_or_traversal_path"
+            elif any(part in blocked_names or part.startswith((".env", "secret", "credential", "password", "token", "api_key")) for part in parts):
+                denied_reason = "sensitive_path"
+            elif any(part in {".github", "workflows"} for part in parts) and ".github" in parts:
+                denied_reason = "workflow_configuration"
+            elif normalized in blocked_files or Path(normalized).suffix in blocked_suffixes:
+                denied_reason = "protected_or_key_file"
+
+            candidate = (root / relative).resolve(strict=False)
+            if not denied_reason and candidate != root and root not in candidate.parents:
+                denied_reason = "workspace_escape"
+            if not denied_reason and (not candidate.is_file()):
+                denied_reason = "not_an_existing_file"
+
+            # Also inspect the resolved path so an innocently named symlink cannot
+            # point into a secret directory or protected configuration file.
+            if not denied_reason:
+                resolved_relative = candidate.relative_to(root).as_posix().lower()
+                resolved_parts = [part.lower() for part in Path(resolved_relative).parts]
+                if (
+                    any(part in blocked_names or part.startswith((".env", "secret", "credential", "password", "token", "api_key")) for part in resolved_parts)
+                    or (".github" in resolved_parts and "workflows" in resolved_parts)
+                    or resolved_relative in blocked_files
+                    or candidate.suffix.lower() in blocked_suffixes
+                ):
+                    denied_reason = "resolved_sensitive_path"
+
+            if denied_reason:
+                self.engineer.guard.audit.write(
+                    "autonomous_read_path_denied",
+                    requested_path=value,
+                    reason=denied_reason,
+                )
+                continue
+
+            safe_path = candidate.relative_to(root).as_posix()
+            if safe_path not in result:
+                result.append(safe_path)
+
         return result
 
-    def _planning_prompt(self, objective: str, context: str, iteration: int) -> str:
+    def _planning_prompt(
+        self, objective: str, context: str, iteration: int,
+        prior_evidence: list[dict[str, Any]] | None = None,
+    ) -> str:
         return f"""You are Rooster Autonomous Engineer.
 You are operating inside a guarded local software repository.
 Objective: {objective}
 Iteration: {iteration}/{self.max_iterations}
+
+Prior attempts and verification evidence (learn from failures; do not repeat a failed approach blindly):
+{json.dumps(prior_evidence or [], indent=2, default=str)}
 
 Workspace inventory:
 {context}
@@ -222,10 +386,13 @@ the workspace. The next stage will receive the selected file contents."""
         context: str,
         files: dict[str, str],
         plan: dict[str, Any],
+        prior_evidence: list[dict[str, Any]] | None = None,
     ) -> str:
         return f"""You are Rooster Autonomous Engineer.
 Implement this objective in the current repository: {objective}
 Iteration: {iteration}/{self.max_iterations}
+Prior attempts and verification evidence (diagnose failures and change approach when justified):
+{json.dumps(prior_evidence or [], indent=2, default=str)}
 Plan:
 {json.dumps(plan, indent=2)}
 
@@ -241,14 +408,40 @@ Return ONLY JSON:
 Rules:
 - Make the smallest coherent change that advances the objective.
 - Return COMPLETE file contents, not diffs.
-- You may change only non-protected project files.
-- Never modify rooster_engine/guard.py, core.py, command.py, runtime.py,
-  verification.py, analysis.py, app.py, SECURITY.md, .github/workflows/*,
+- You may change ordinary application, integration, and test code, including app.py and mobile_server.py.
+- Never modify the security enforcement core: rooster_engine/guard.py, rooster_engine/core.py,
+  rooster_engine/command.py, rooster_engine/runtime.py, rooster_engine/verification.py,
+  rooster_engine/analysis.py, SECURITY.md, .github/workflows/*,
   credentials, secrets, or environment files.
 - Never add API keys or tokens.
 - Keep changes compatible with the existing architecture.
 - Prefer tests when the objective is a code change.
 - Maximum {MAX_WRITE_FILES} files and {MAX_WRITE_CHARS} characters per file."""
+
+    def _objective_check_call(
+        self,
+        *,
+        objective: str,
+        changed_files: list[dict[str, str]],
+        intent: str,
+        test_evidence: Any,
+    ) -> dict[str, Any]:
+        """Check whether the requested outcome is evidenced by the actual patch and fresh tests."""
+        prompt = (
+            "Review whether this engineering objective was actually achieved. Do not equate "
+            "a passing test suite with objective completion. Compare the requested outcome with "
+            "the actual changed file content and the test evidence. Be conservative: if evidence "
+            "is incomplete, return objective_met=false. Return JSON only in this exact shape: "
+            '{"objective_met": true, "reason": "short explanation"}\n'
+            f"Objective: {objective}\nPatch intent: {intent}\n"
+            f"Changed files and content previews: {json.dumps(changed_files, default=str)}\n"
+            f"Fresh test evidence: {json.dumps(test_evidence, default=str)}"
+        )
+        result = self._json_call(prompt)
+        return {
+            "objective_met": result.get("objective_met") is True,
+            "reason": str(result.get("reason", ""))[:1000],
+        }
 
     def _summary_call(self, objective: str, evidence: list[dict[str, Any]]) -> str:
         prompt = (
@@ -259,7 +452,8 @@ Rules:
         try:
             response = self.client.responses.create(
                 model=self.model,
-                instructions="You are a precise software engineering reviewer.",
+                reasoning={"effort": self.reasoning_effort},
+                instructions="You are a precise software engineering reviewer. Verify claims against supplied evidence.",
                 input=prompt,
             )
             return response.output_text.strip()
@@ -267,19 +461,31 @@ Rules:
             return "Rooster completed the bounded task and recorded fresh test evidence."
 
     def _json_call(self, prompt: str) -> dict[str, Any]:
-        try:
-            response = self.client.responses.create(
-                model=self.model,
-                instructions="Return only valid JSON. No markdown fences.",
-                input=prompt,
-            )
-        except Exception as exc:
-            raise RuntimeError(f"Autonomous model request failed: {exc}") from exc
-        raw = response.output_text.strip()
-        try:
-            value = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("Autonomous model returned invalid JSON.") from exc
-        if not isinstance(value, dict):
-            raise RuntimeError("Autonomous model returned a non-object JSON value.")
-        return value
+        last_error: Exception | None = None
+        for attempt in range(2):
+            request_prompt = prompt
+            if attempt:
+                request_prompt += (
+                    "\n\nYour previous response was not valid JSON. Correct the formatting "
+                    "and return exactly one JSON object matching the requested schema."
+                )
+            try:
+                response = self.client.responses.create(
+                    model=self.model,
+                    reasoning={"effort": self.reasoning_effort},
+                    instructions="Return only valid JSON. No markdown fences or commentary.",
+                    input=request_prompt,
+                )
+            except Exception as exc:
+                raise RuntimeError(f"Autonomous model request failed: {exc}") from exc
+            raw = response.output_text.strip()
+            try:
+                value = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                last_error = exc
+                continue
+            if not isinstance(value, dict):
+                last_error = ValueError("Model returned a non-object JSON value.")
+                continue
+            return value
+        raise RuntimeError("Autonomous model returned invalid JSON after one repair attempt.") from last_error

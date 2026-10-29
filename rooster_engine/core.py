@@ -13,7 +13,6 @@ from .guard import Action, Risk, RoosterGuard
 from .runtime import RuntimeBudget, RuntimeLimits
 from .verification import VerificationEngine
 from .analysis import CodebaseAnalyzer, prioritize_findings
-from .creative_media import CreativeStudio
 
 
 @dataclass
@@ -158,13 +157,30 @@ class Workspace:
             target = target.with_name(target.name + "_1")
 
         # Preserve symlinks rather than following them into unrelated locations.
+        # Exclude credential-like files so recovery copies do not multiply keys.
+        sensitive_names = {
+            ".git", ".rooster", "__pycache__", ".ssh", ".aws", ".azure",
+            "credentials", "secrets", "passwords", "tokens",
+        }
+        sensitive_suffixes = {".pem", ".key", ".p12", ".pfx", ".kdbx", ".pyc"}
+
+        def ignore_sensitive(_directory: str, names: list[str]) -> set[str]:
+            ignored: set[str] = set()
+            for name in names:
+                lowered = name.lower()
+                if (
+                    lowered in sensitive_names
+                    or lowered.startswith((".env", "credentials", "secrets", "password", "token"))
+                    or any(lowered.endswith(suffix) for suffix in sensitive_suffixes)
+                ):
+                    ignored.add(name)
+            return ignored
+
         shutil.copytree(
             self.root,
             target,
             symlinks=True,
-            ignore=shutil.ignore_patterns(
-                ".git", ".rooster", "__pycache__", "*.pyc"
-            ),
+            ignore=ignore_sensitive,
         )
         return target
 
@@ -217,28 +233,6 @@ class AutonomousEngineer:
             "run_tests",
             lambda: self.verifier.run_test_suite(self.workspace.root, self.guard),
         )
-        self.tools.register("create_media_project", self.create_media_project)
-
-    def create_media_project(self, idea: str, output_dir: str = "video_projects/rooster_media", total_seconds: int = 120, format: str = "vertical") -> str:
-        """Plan and render a complete video + graphics + commentary project."""
-        if not idea.strip():
-            raise ValueError("Media objective cannot be empty.")
-        target = self.workspace._workspace_path(output_dir)
-        studio = CreativeStudio()
-        final = studio.create_project(
-            idea,
-            target,
-            total_seconds=total_seconds,
-            format=format,
-        )
-        self.guard.audit.write(
-            "media_project_created",
-            objective=idea,
-            output=str(final),
-            format=format,
-            total_seconds=total_seconds,
-        )
-        return str(final)
 
     def write_file(self, relative_path: str, content: str) -> str:
         """Write only to the guarded sandbox and enforce protected-path policy."""
