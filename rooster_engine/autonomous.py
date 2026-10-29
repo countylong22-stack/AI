@@ -278,7 +278,7 @@ class AutonomousCoder:
             "passwords", "password", "tokens", "token",
         }
         blocked_files = {
-            "app.py", "security.md",
+            "security.md",
             "rooster_engine/guard.py", "rooster_engine/core.py",
             "rooster_engine/command.py", "rooster_engine/runtime.py",
             "rooster_engine/verification.py", "rooster_engine/analysis.py",
