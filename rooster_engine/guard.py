@@ -271,7 +271,6 @@ class RoosterGuard:
         "rooster_engine/runtime.py",
         "rooster_engine/verification.py",
         "rooster_engine/analysis.py",
-        "app.py",
         ".github/workflows/*",
         "SECURITY.md",
     )
