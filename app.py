@@ -8,9 +8,6 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 from datetime import datetime
 
 from rooster_engine import AutonomousEngineer, Action, Risk
-from rooster_engine.video_studio import VideoStudio, VideoStudioError
-from rooster_engine.video_renderer import VideoRenderer, VideoRendererError
-from rooster_engine.creative_media import CreativeStudio, CreativeStudioError
 from rooster_engine.autonomous import AutonomousCoder
 from rooster_engine.interaction import parse_chat_action
 from uuid import uuid4
@@ -68,8 +65,6 @@ class RoosterEngineerApp:
         ttk.Button(top, text="EMERGENCY STOP", command=self.emergency_stop).pack(side="right", padx=(6, 0))
         ttk.Button(top, text="Reset Stop", command=self.reset_stop).pack(side="right", padx=6)
         ttk.Button(top, text="Choose Workspace", command=self.choose_workspace).pack(side="right")
-        ttk.Button(top, text="MAKE VIDEO", command=self.make_video).pack(side="right", padx=6)
-        ttk.Button(top, text="MAKE MEDIA", command=self.make_media).pack(side="right", padx=6)
         ttk.Button(top, text="AUTONOMOUS MODE", command=self.start_autonomous_mode).pack(side="right", padx=6)
 
         main = ttk.Panedwindow(self.root, orient="horizontal")
@@ -279,125 +274,6 @@ class RoosterEngineerApp:
         self.set_action_status("REJECTED", action_id)
         self.chat_log("YOU", f"REJECTED action {action_id}")
         self.chat_log("ROOSTER", "Rejected. Nothing was executed.")
-
-    def make_video(self):
-        """Run the complete AI video pipeline from one button."""
-        idea = self.task_entry.get("1.0", tk.END).strip() or self.chat_entry.get("1.0", tk.END).strip()
-        if not idea:
-            messagebox.showwarning("Rooster Video Studio", "Enter a video idea first.")
-            return
-
-        renderer = VideoRenderer()
-        if not renderer.configured:
-            messagebox.showerror(
-                "Rooster Video Studio",
-                "No video renderer is connected.\n\n"
-                "Connect a renderer with ROOSTER_RENDERER_URL or "
-                "ROOSTER_RENDER_COMMAND, then press MAKE VIDEO again.",
-            )
-            self.log("VIDEO: no renderer connected; nothing was charged or rendered.")
-            return
-
-        self.log(f"VIDEO: renderer detected — {renderer.status()}")
-        self.log("VIDEO: MAKE VIDEO pipeline started.")
-
-        def worker():
-            try:
-                total_seconds = 120
-                video_format = "vertical"
-                self.log("VIDEO: creating 2-minute production plan with Rooster/OpenAI...")
-                plan = VideoStudio().plan(idea, total_seconds=total_seconds, format=video_format)
-                project_dir = self.workspace / "video_projects" / "rooster_video"
-                project_dir.mkdir(parents=True, exist_ok=True)
-                VideoStudio.save(plan, project_dir / "plan.json")
-
-                clips = []
-                for index, scene in enumerate(plan["scenes"], 1):
-                    try:
-                        self.engine.guard.emergency_stop.check()
-                    except Exception as exc:
-                        raise VideoRendererError("Rooster Emergency Stop is active.") from exc
-                    clip = project_dir / f"scene_{index:02d}.mp4"
-                    self.log(f"VIDEO: rendering scene {index}/{len(plan['scenes'])}...")
-                    renderer.render_scene(
-                        scene, clip, format=video_format,
-                        master_visual_lock=plan.get("master_visual_lock", ""),
-                        log=self.log,
-                    )
-                    clips.append(clip)
-
-                final = project_dir / "rooster_2min.mp4"
-                renderer.assemble(clips, final, log=self.log)
-                self.root.after(0, lambda: messagebox.showinfo(
-                    "Rooster Video Studio",
-                    f"2-minute video complete.\n\n{final}",
-                    parent=self.root,
-                ))
-            except Exception as exc:
-                self.log(f"VIDEO PIPELINE FAILED: {exc}")
-                self.root.after(0, lambda: messagebox.showerror(
-                    "Rooster Video Studio", str(exc), parent=self.root
-                ))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def make_media(self):
-        """Create a complete project: video scenes, graphics, and commentary."""
-        idea = self.task_entry.get("1.0", tk.END).strip() or self.chat_entry.get("1.0", tk.END).strip()
-        if not idea:
-            idea = (
-                "Create an ultra-realistic Rooster Racing GT3 video featuring car #45 "
-                "with a chrome silver mirror-finish livery, intense clean racing, and an "
-                "energetic American motorsport commentary style."
-            )
-            self.task_entry.insert("1.0", idea)
-        if self.action_running:
-            messagebox.showwarning("Rooster Creative Studio", "Another guarded action is already running.")
-            return
-
-        self.action_running = True
-        self.send_button.configure(state="disabled")
-        self.log("MEDIA: full creative pipeline started — video + graphics + commentary.")
-
-        def worker():
-            try:
-                self.engine.guard.emergency_stop.check()
-                task_id = f"media-{uuid4().hex[:12]}"
-                action = self.engine.guard.action_id(
-                    Action(
-                        "create_media_project",
-                        "User requested a complete AI media project.",
-                        "Plan and render video, graphics, and commentary.",
-                        "Project files, rendered assets, and final MP4.",
-                        Risk.MEDIUM,
-                        "video_projects/rooster_media",
-                    )
-                )
-                self.engine.guard.approve(action, actor="human", task_id=task_id)
-                result = self.engine.tools.run(
-                    "create_media_project",
-                    idea,
-                    reason="User requested a complete AI media project.",
-                    action="Plan and render video, graphics, and commentary.",
-                    evidence="Project files, rendered assets, and final MP4.",
-                    risk=__import__("rooster_engine").Risk.MEDIUM,
-                    target="video_projects/rooster_media",
-                    actor="human",
-                    task_id=task_id,
-                )
-                self.log(f"MEDIA COMPLETE: {result}")
-                self.root.after(0, lambda: messagebox.showinfo(
-                    "Rooster Creative Studio",
-                    f"Media project complete.\n\n{result}",
-                    parent=self.root,
-                ))
-            except Exception as exc:
-                self.log(f"MEDIA PIPELINE FAILED: {exc}")
-                self.root.after(0, lambda: messagebox.showerror(
-                    "Rooster Creative Studio", str(exc), parent=self.root
-                ))
-            finally:
-                self.root.after(0, self._finish_autonomous_mode)
 
     def start_autonomous_mode(self):
         """Let Rooster independently execute a bounded engineering loop."""
