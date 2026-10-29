@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import subprocess
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
+
+
+from .command_template import build_command
 
 
 class VideoRendererError(RuntimeError):
@@ -91,12 +93,15 @@ class VideoRenderer:
     def _render_command(self, request: dict[str, Any], output: Path) -> None:
         request_path = output.with_suffix(".request.json")
         request_path.write_text(json.dumps(request, indent=2), encoding="utf-8")
-        command = self.renderer_command.format(
-            request=shlex.quote(str(request_path)),
-            output=shlex.quote(str(output)),
-        )
         try:
-            completed = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=1800)
+            command = build_command(
+                self.renderer_command,
+                request=str(request_path),
+                output=str(output),
+            )
+            completed = subprocess.run(
+                command, shell=False, capture_output=True, text=True, timeout=1800
+            )
         except Exception as exc:
             raise VideoRendererError(f"Renderer command failed to start: {exc}") from exc
         if completed.returncode != 0:
