@@ -9,6 +9,41 @@ from rooster_engine.core import AutonomousEngineer
 
 
 class GuardTests(unittest.TestCase):
+    def test_audit_chain_verifies_and_detects_record_tampering(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audit_path = Path(tmp) / "audit.jsonl"
+            guard = RoosterGuard(Path(tmp), audit_path)
+            guard.audit.write("first_event", detail="original")
+            guard.audit.write("second_event", detail="original")
+            report = guard.audit.verify_chain()
+            self.assertTrue(report["valid"])
+            self.assertEqual(report["records"], 2)
+
+            records = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
+            records[0]["detail"] = "tampered"
+            audit_path.write_text(
+                "\\n".join(json.dumps(record, sort_keys=True) for record in records) + "\\n",
+                encoding="utf-8",
+            )
+            report = guard.audit.verify_chain()
+            self.assertFalse(report["valid"])
+            self.assertEqual(report["broken_at"], 1)
+
+    def test_corrupt_audit_log_fails_closed_on_reopen(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            audit_path = root / "audit.jsonl"
+            guard = RoosterGuard(root, audit_path)
+            guard.audit.write("normal_event", detail="valid")
+            records = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
+            records[0]["event"] = "silently_changed"
+            audit_path.write_text(
+                json.dumps(records[0], sort_keys=True) + "\\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "integrity check failed"):
+                RoosterGuard(root, audit_path)
+
     def test_unknown_tool_is_denied(self):
         with tempfile.TemporaryDirectory() as tmp:
             guard = RoosterGuard(Path(tmp), Path(tmp) / "audit.jsonl")
