@@ -257,6 +257,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             Toast.makeText(this, "Enter the Rooster PC address and API token first.", Toast.LENGTH_SHORT).show()
             return
         }
+        // The API accepts at most 20 messages. Reserve room for both this
+        // user message and the assistant reply before sending the request.
+        while (conversation.length() > 18) conversation.remove(0)
         conversation.put(JSONObject().put("role", "user").put("content", message))
         chatInput.setText("")
         renderConversation()
@@ -299,7 +302,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun openConnection(method: String, path: String, body: String? = null): HttpURLConnection {
         val base = server.text.toString().trim().trimEnd('/')
         val apiToken = token.text.toString().trim()
-        return (URL(base + path).openConnection() as HttpURLConnection).apply {
+        val target = URL(base + path)
+        require(target.protocol.equals("https", ignoreCase = true) && target.userInfo == null) {
+            "Rooster connections must use HTTPS without embedded credentials."
+        }
+        return (target.openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 7000
             readTimeout = 35000
