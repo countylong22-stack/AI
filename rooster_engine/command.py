@@ -92,7 +92,19 @@ class CommandExecutor:
         # Emergency stop is the first runtime authorization gate after basic input validation.
         # Policy validation must never run ahead of the kill switch.
         self.guard.emergency_stop.check()
-        executable = Path(command[0]).name.lower()
+        # Accept command names only, never caller-supplied executable paths.
+        # A path such as C:\\temp\\python.exe or /tmp/python could bypass the
+        # intended executable allowlist by matching on basename alone.
+        executable_arg = command[0]
+        if "/" in executable_arg or "\\" in executable_arg:
+            self.guard.audit.write(
+                "command_denied",
+                command=list(command),
+                reason="executable_path_not_allowed",
+            )
+            raise PermissionError("Executable paths are not allowed; use an allowlisted command name.")
+
+        executable = executable_arg.lower()
         if executable not in {name.lower() for name in self.allowed_commands}:
             self.guard.audit.write(
                 "command_denied", command=list(command), reason="executable_not_allowlisted"
