@@ -147,9 +147,9 @@ class AuditLog:
                 record, sort_keys=True, separators=(",", ":"), default=str
             ).encode("utf-8")
             record["record_hash"] = hashlib.sha256(payload).hexdigest()
-            self._previous_hash = record["record_hash"]
             with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(record, sort_keys=True, default=str) + "\\n")
+                handle.write(json.dumps(record, sort_keys=True, default=str) + "\n")
+            self._previous_hash = record["record_hash"]
 
 
 class RoosterGuard:
