@@ -118,7 +118,7 @@ class AutonomousCoderTests(unittest.TestCase):
                     })
                 if '"patches"' in prompt:
                     return self._response({
-                        "patches": [{"path": "sample.txt", "content": "changed\\n"}],
+                        "patches": [{"path": "sample.txt", "content": "changed\n"}],
                         "intent": "change sample",
                     })
                 if '"read_paths"' in prompt:
@@ -127,12 +127,12 @@ class AutonomousCoderTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "sample.txt").write_text("old\\n", encoding="utf-8")
+            (root / "sample.txt").write_text("old\n", encoding="utf-8")
             tests_dir = root / "tests"
             tests_dir.mkdir()
             (tests_dir / "test_smoke.py").write_text(
-                "import unittest\\nclass SmokeTests(unittest.TestCase):\\n"
-                "    def test_smoke(self): self.assertTrue(True)\\n",
+                "import unittest\nclass SmokeTests(unittest.TestCase):\n"
+                "    def test_smoke(self): self.assertTrue(True)\n",
                 encoding="utf-8",
             )
             engineer = AutonomousEngineer(root, root / "tasks.json")
