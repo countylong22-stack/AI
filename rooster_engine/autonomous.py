@@ -20,12 +20,13 @@ from .guard import Action, Risk
 
 
 # Use a documented API model as the default; deployments can override it explicitly.
-DEFAULT_MODEL = os.getenv("ROOSTER_AGENT_MODEL", "gpt-4.1")
-MAX_ITERATIONS = 3
-MAX_READ_FILES = 8
-MAX_FILE_CHARS = 30000
-MAX_WRITE_FILES = 6
-MAX_WRITE_CHARS = 100000
+DEFAULT_MODEL = os.getenv("ROOSTER_AGENT_MODEL", "gpt-6.1-sol")
+DEFAULT_REASONING_EFFORT = os.getenv("ROOSTER_REASONING_EFFORT", "high")
+DEFAULT_MAX_ITERATIONS = int(os.getenv("ROOSTER_MAX_ITERATIONS", "5"))
+MAX_READ_FILES = 12
+MAX_FILE_CHARS = 40000
+MAX_WRITE_FILES = 10
+MAX_WRITE_CHARS = 150000
 
 
 @dataclass
@@ -47,12 +48,15 @@ class AutonomousCoder:
         *,
         model: str = DEFAULT_MODEL,
         client: OpenAI | None = None,
-        max_iterations: int = MAX_ITERATIONS,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS,
     ) -> None:
         if max_iterations < 1 or max_iterations > 10:
             raise ValueError("max_iterations must be between 1 and 10.")
         self.engineer = engineer
         self.model = model
+        self.reasoning_effort = DEFAULT_REASONING_EFFORT
+        if self.reasoning_effort not in {"low", "medium", "high", "xhigh", "max"}:
+            raise ValueError("ROOSTER_REASONING_EFFORT must be low, medium, high, xhigh, or max.")
         self.client = client or OpenAI()
         self.max_iterations = max_iterations
 
@@ -69,8 +73,9 @@ class AutonomousCoder:
             guard.emergency_stop.check()
             inventory = self.engineer.workspace.inspect(limit=100)
             context = self._planning_context(inventory)
+            prior_evidence = evidence[-3:]
             plan = self._json_call(
-                self._planning_prompt(objective, context, iteration)
+                self._planning_prompt(objective, context, iteration, prior_evidence)
             )
             read_paths = self._safe_read_paths(plan.get("read_paths", []))
 
@@ -82,7 +87,7 @@ class AutonomousCoder:
                 )
 
             patch_request = self._json_call(
-                self._patch_prompt(objective, iteration, context, files, plan)
+                self._patch_prompt(objective, iteration, context, files, plan, prior_evidence)
             )
             patches = patch_request.get("patches", [])
             if not isinstance(patches, list):
@@ -337,11 +342,17 @@ class AutonomousCoder:
 
         return result
 
-    def _planning_prompt(self, objective: str, context: str, iteration: int) -> str:
+    def _planning_prompt(
+        self, objective: str, context: str, iteration: int,
+        prior_evidence: list[dict[str, Any]] | None = None,
+    ) -> str:
         return f"""You are Rooster Autonomous Engineer.
 You are operating inside a guarded local software repository.
 Objective: {objective}
 Iteration: {iteration}/{self.max_iterations}
+
+Prior attempts and verification evidence (learn from failures; do not repeat a failed approach blindly):
+{json.dumps(prior_evidence or [], indent=2, default=str)}
 
 Workspace inventory:
 {context}
@@ -360,10 +371,13 @@ the workspace. The next stage will receive the selected file contents."""
         context: str,
         files: dict[str, str],
         plan: dict[str, Any],
+        prior_evidence: list[dict[str, Any]] | None = None,
     ) -> str:
         return f"""You are Rooster Autonomous Engineer.
 Implement this objective in the current repository: {objective}
 Iteration: {iteration}/{self.max_iterations}
+Prior attempts and verification evidence (diagnose failures and change approach when justified):
+{json.dumps(prior_evidence or [], indent=2, default=str)}
 Plan:
 {json.dumps(plan, indent=2)}
 
@@ -379,9 +393,9 @@ Return ONLY JSON:
 Rules:
 - Make the smallest coherent change that advances the objective.
 - Return COMPLETE file contents, not diffs.
-- You may change only non-protected project files.
-- Never modify rooster_engine/guard.py, core.py, command.py, runtime.py,
-  verification.py, analysis.py, app.py, SECURITY.md, .github/workflows/*,
+- You may change ordinary application, integration, and test code, including app.py and mobile_server.py.
+- Never modify the security enforcement core: rooster_engine/guard.py, rooster_engine/command.py,
+  SECURITY.md, .github/workflows/*,
   credentials, secrets, or environment files.
 - Never add API keys or tokens.
 - Keep changes compatible with the existing architecture.
@@ -397,7 +411,8 @@ Rules:
         try:
             response = self.client.responses.create(
                 model=self.model,
-                instructions="You are a precise software engineering reviewer.",
+                reasoning={"effort": self.reasoning_effort},
+                instructions="You are a precise software engineering reviewer. Verify claims against supplied evidence.",
                 input=prompt,
             )
             return response.output_text.strip()
@@ -405,19 +420,31 @@ Rules:
             return "Rooster completed the bounded task and recorded fresh test evidence."
 
     def _json_call(self, prompt: str) -> dict[str, Any]:
-        try:
-            response = self.client.responses.create(
-                model=self.model,
-                instructions="Return only valid JSON. No markdown fences.",
-                input=prompt,
-            )
-        except Exception as exc:
-            raise RuntimeError(f"Autonomous model request failed: {exc}") from exc
-        raw = response.output_text.strip()
-        try:
-            value = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("Autonomous model returned invalid JSON.") from exc
-        if not isinstance(value, dict):
-            raise RuntimeError("Autonomous model returned a non-object JSON value.")
-        return value
+        last_error: Exception | None = None
+        for attempt in range(2):
+            request_prompt = prompt
+            if attempt:
+                request_prompt += (
+                    "\n\nYour previous response was not valid JSON. Correct the formatting "
+                    "and return exactly one JSON object matching the requested schema."
+                )
+            try:
+                response = self.client.responses.create(
+                    model=self.model,
+                    reasoning={"effort": self.reasoning_effort},
+                    instructions="Return only valid JSON. No markdown fences or commentary.",
+                    input=request_prompt,
+                )
+            except Exception as exc:
+                raise RuntimeError(f"Autonomous model request failed: {exc}") from exc
+            raw = response.output_text.strip()
+            try:
+                value = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                last_error = exc
+                continue
+            if not isinstance(value, dict):
+                last_error = ValueError("Model returned a non-object JSON value.")
+                continue
+            return value
+        raise RuntimeError("Autonomous model returned invalid JSON after one repair attempt.") from last_error
