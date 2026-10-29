@@ -16,7 +16,7 @@ Rooster v2 is a guarded autonomous engineering workspace for Windows and Python.
 - **Desktop GUI** — live activity, task history, checkpoint control, and emergency-stop controls.
 - **Engineering-only interface** — the desktop app exposes guarded autonomous engineering, workspace inspection, task history, verification, and emergency-stop controls. Video editing and media-generation actions are not part of the app or tool registry.
 - **Windows app build** — GitHub Actions automatically builds a standalone `Rooster Autonomous Engineer.exe` for Windows.
-- **Android mobile companion** — an Android app can connect to the Rooster computer for status and emergency-stop control.
+- **Android mobile companion** — authenticated chat, voice input/output, PC status, autonomous task submission/progress, and emergency-stop control.
 
 ## Safety boundary
 
@@ -46,14 +46,19 @@ The build produces `dist\Rooster Autonomous Engineer.exe`.
 
 ## Android mobile companion
 
-The Android project is under `mobile/`. The companion currently provides:
+The Android project is under `mobile/`. The companion provides chat, speech-to-text, spoken replies, authenticated PC status, autonomous task submission/progress, and emergency stop/reset. Engineering work runs on the Rooster computer through the guarded agent; ordinary chat alone does not execute tasks.
 
-- Rooster computer connection settings
-- authenticated status checking
-- emergency stop
-- emergency-stop reset
+### Agent model and autonomy settings
 
-The phone app intentionally does **not** expose arbitrary engineering execution. Engineering work remains on the Rooster computer behind RoosterGuard.
+The autonomous coding agent defaults to the documented `gpt-6.1-sol` model with high reasoning effort. Mobile chat uses the Responses API with `gpt-6.1-sol` and medium reasoning effort. These are configurable with environment variables:
+
+- `ROOSTER_AGENT_MODEL` — coding-agent model ID
+- `ROOSTER_REASONING_EFFORT` — coding reasoning effort: `low`, `medium`, `high`, `xhigh`, or `max`
+- `ROOSTER_CHAT_MODEL` — mobile-chat model ID
+- `ROOSTER_CHAT_REASONING_EFFORT` — mobile-chat reasoning effort
+- `ROOSTER_MAX_ITERATIONS` — autonomous coding iterations, 1–10 (default 5)
+
+The agent carries recent test evidence into later attempts and makes one formatting-repair retry for invalid JSON. Increasing iteration or reasoning settings can increase runtime and API cost. Rooster still keeps checkpoints, audit logs, protected security code, bounded file changes, and the emergency stop.
 
 ### Build the APK
 
